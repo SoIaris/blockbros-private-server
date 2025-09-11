@@ -1,0 +1,15 @@
+__pycache__/app.cpython-312.pyc
+__pycache__/extensions.cpython-312.pyc
+models/__pycache__/gamer.cpython-312.pyc
+routes/__pycache__/__init__.cpython-312.pyc
+routes/__pycache__/auth.cpython-312.pyc
+routes/__pycache__/gamer.cpython-312.pyc
+util/__pycache__/authentication.cpython-312.pyc
+.vercel
+.env
+models/__pycache__/comment.cpython-312.pyc
+models/__pycache__/emblem.cpython-312.pyc
+models/__pycache__/level.cpython-312.pyc
+models/__pycache__/play.cpython-312.pyc
+models/__pycache__/ranking.cpython-312.pyc
+models/__pycache__/rating.cpython-312.pyc

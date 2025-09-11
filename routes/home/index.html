@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:title" content="Blockbros" />
+    <meta property="og:description" content="private server for blockbros" />
+    <meta property="og:type" content="website" />
+
+    <title>Made by matt</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            color: #ffffff;
+            position: relative;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* Background video styling */
+        #bg-video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: -1;
+        }
+        
+        .container {
+            background-color: rgba(12, 12, 12, 0.85); /* Semi-transparent */
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            width: 90%;
+            max-width: 600px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        .gray-square {
+            background-color: rgba(61, 61, 61, 0.7); /* Semi-transparent */
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        
+        h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #ffffff;
+        }
+        
+        p {
+            font-size: 16px;
+            color: #cccccc;
+            margin: 0;
+        }
+        
+        .video-discord-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        iframe {
+            width: 80%;
+            max-width: 250px;
+            height: 300px;
+            margin: 10px;
+            border: none;
+            background: transparent;
+        }
+    </style>
+</head>
+<body>
+    <video id="bg-video" autoplay loop playsinline>
+        <source src="static/DarkHorse.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+    
+    <div class="container">
+        <p style="color: #ffffff54; font-size: 20px; margin-bottom: 5px;">Join the discord server</p>
+        <p style="color: #ffffff54; font-size: 15px; margin-bottom: 25px;">BlockBros pirvate server - keep playing BlockBros after shutdown</p>
+        <div class="video-discord-container">
+            <iframe src="https://discord.com/widget?id=1351767550223974430&theme=dark" allowtransparency="true" frameborder="0" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"></iframe>    
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const video = document.getElementById('bg-video');
+            video.play().catch(e => {
+                document.body.addEventListener('click', function() {
+                    video.play();
+                }, { once: true });
+            });
+        });
+    </script>
+</body>
+</html>
