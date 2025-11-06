@@ -77,7 +77,6 @@ def clear():
         clearReward = extensions.getDifficultyReward(difficulty)
         inventory = Json.loads(gamer.inventory)
         blocks = inventory["blocks"]
-        print(blocks)
         if clearReward["type"] == "block":
             if not str(clearReward['id']) in blocks:
                 blocks[str(clearReward['id'])] = clearReward["quantity"]
@@ -106,8 +105,10 @@ def clear():
         subquery.c.best_time < ranking.time
     ).scalar()
     db.session.commit()
-    rank = better_players + 1 if ranking else None
-    print(clearReward)
+    rank = None
+    if ranking:
+        rank = better_players + 1
+
     return jsonify({
        "success": True,
        "result": {

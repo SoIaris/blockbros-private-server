@@ -112,71 +112,69 @@ def post():
     if re.fullmatch(r'level_(\d+)', str(groupKey)):
         levelid = re.fullmatch(r'level_(\d+)', str(groupKey)).group(1)
         level: Level = Level.query.filter_by(id=int(levelid)).first()
-        if not level:
-            return jsonify({}), 500
-        
-        levelCreator: Gamer = Gamer.query.filter_by(id=level.creator).first()
-        
-        # notification stuff
-        if levelCreator.id != gamer.id:
-            if re.search(r'@(\w+)', json.get("comment")): # @GAMER
-                user = re.search(r'@(\w+)', json.get("comment")).group(1)
-                gamerSearch: Gamer = Gamer.query.filter(func.lower(Gamer.nickname) == func.lower(user)).first()
+        if level:
+            levelCreator: Gamer = Gamer.query.filter_by(id=level.creator).first()
 
-                if gamerSearch:
-                    existingNotification = next(
-                        (n for n in gamerSearch.notifications if n["id"] == f"mention{level.id}"),
+            # notification stuff
+            if levelCreator.id != gamer.id:
+                if re.search(r'@(\w+)', json.get("comment")): # @GAMER
+                    user = re.search(r'@(\w+)', json.get("comment")).group(1)
+                    gamerSearch: Gamer = Gamer.query.filter(func.lower(Gamer.nickname) == func.lower(user)).first()
+
+                    if gamerSearch:
+                        existingNotification = next(
+                            (n for n in gamerSearch.notifications if n["id"] == f"mention{level.id}"),
+                            None
+                        )
+                        if existingNotification:
+                            existingNotification['updated_at'] = round(datetime.timestamp(datetime.now()))
+                        else:
+                            gamerSearch.notifications.append({
+                                "args": {
+                                  "level_id": level.id,
+                                  "level_title": level.title,
+                                  "senders": [
+                                    {
+                                        "id": gamer.id,
+                                        "nickname": gamer.nickname,
+                                        "time": round(datetime.timestamp(datetime.now()))
+                                    }
+                                  ]
+                                },
+                                "id": f"mention{level.id}",
+                                "type": "mention",
+                                "updated_at": round(datetime.timestamp(datetime.now()))
+                            })
+                else: # comment notification
+                    existingcommentNotification = next(
+                        (n for n in levelCreator.notifications if n["id"] == f"comment{level.id}"),
                         None
                     )
-                    if existingNotification:
-                        existingNotification['updated_at'] = round(datetime.timestamp(datetime.now()))
+                    if existingcommentNotification:
+                        existingcommentNotification["args"]["senders"].append({
+                          "id": gamer.id,
+                          "nickname": gamer.nickname,
+                          "time": round(datetime.timestamp(datetime.now()))
+                        })
+                        existingcommentNotification['updated_at'] = round(datetime.timestamp(datetime.now()))
                     else:
-                        gamerSearch.notifications.append({
-                            "args": {
-                              "level_id": level.id,
-                              "level_title": level.title,
-                              "senders": [
-                                {
+                        levelCreator.notifications.append(
+                            {
+                              "args": {
+                                "level_id": level.id,
+                                "level_title": level.title,
+                                "senders": [
+                                  {
                                     "id": gamer.id,
                                     "nickname": gamer.nickname,
                                     "time": round(datetime.timestamp(datetime.now()))
-                                }
-                              ]
-                            },
-                            "id": f"mention{level.id}",
-                            "type": "mention",
-                            "updated_at": round(datetime.timestamp(datetime.now()))
-                        })
-            else: # comment notification
-                existingcommentNotification = next(
-                    (n for n in levelCreator.notifications if n["id"] == f"comment{level.id}"),
-                    None
-                )
-                if existingcommentNotification:
-                    existingcommentNotification["args"]["senders"].append({
-                      "id": gamer.id,
-                      "nickname": gamer.nickname,
-                      "time": round(datetime.timestamp(datetime.now()))
-                    })
-                    existingcommentNotification['updated_at'] = round(datetime.timestamp(datetime.now()))
-                else:
-                    levelCreator.notifications.append(
-                        {
-                          "args": {
-                            "level_id": level.id,
-                            "level_title": level.title,
-                            "senders": [
-                              {
-                                "id": gamer.id,
-                                "nickname": gamer.nickname,
-                                "time": round(datetime.timestamp(datetime.now()))
+                                  },
+                                ]
                               },
-                            ]
-                          },
-                          "id": f"comment{level.id}",
-                          "type": "comment",
-                          "updated_at": round(datetime.timestamp(datetime.now()))
-                    })
+                              "id": f"comment{level.id}",
+                              "type": "comment",
+                              "updated_at": round(datetime.timestamp(datetime.now()))
+                        })
             
     newComment = Comment(groupKey, str(json["comment"]), "plain", json["options"], gamer.id)
 

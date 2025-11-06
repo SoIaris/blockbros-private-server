@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 
 from app import db
+from sqlalchemy import func
 
 from models.gamer import Gamer
 from models.comment import Comment
@@ -108,6 +109,13 @@ def alt_login():
 
     nextCursor = hashlib.sha1(str(comments[-1].gamer_id).encode('utf-8')).hexdigest() if comments else None
 
+    campaignComments = {}
+    campaignids = [f"level_{data['id']}" for campaign in master["campaign"] for data in master["campaignlevel"][campaign]]
+    compaignWithComments = dict(db.session.query(Comment.group_key, func.count(Comment.commentId)).filter(Comment.group_key.in_(campaignids)).group_by(Comment.group_key).all())
+    for key in campaignids:
+        id = int(key.removeprefix("level_"))
+        campaignComments[id] = compaignWithComments[key] if key in compaignWithComments else 0
+
     return jsonify({
         "success": True,
         "result": {            
@@ -117,7 +125,7 @@ def alt_login():
         },        
         "updated": {
             'campaignInfo': {
-                'comments': {}
+                'comments': campaignComments
             },
             'feeds': {
                 'all_loaded': len(comments) < 10,
@@ -212,7 +220,7 @@ def login():
 
     query = db.session.query(Comment).order_by(Comment.createdAt.desc())
     comments = query.filter_by(group_key="feed").limit(10).all()
-
+        
     items = []
     for comment in comments:
         gamerc: Gamer = Gamer.query.filter_by(id=comment.gamer_id).first()
@@ -255,6 +263,13 @@ def login():
 
     nextCursor = hashlib.sha1(str(comments[-1].gamer_id).encode('utf-8')).hexdigest() if comments else None
 
+    campaignComments = {}
+    campaignids = [f"level_{data['id']}" for campaign in master["campaign"] for data in master["campaignlevel"][campaign]]
+    compaignWithComments = dict(db.session.query(Comment.group_key, func.count(Comment.commentId)).filter(Comment.group_key.in_(campaignids)).group_by(Comment.group_key).all())
+    for key in campaignids:
+        id = int(key.removeprefix("level_"))
+        campaignComments[id] = compaignWithComments[key] if key in compaignWithComments else 0
+
     return jsonify({
         "success": True,
         "result": {
@@ -263,7 +278,7 @@ def login():
         },        
         "updated": {
             'campaignInfo': {
-                'comments': {}
+                'comments': campaignComments
             },
             'feeds': {
                 'all_loaded': len(comments) < 10,
@@ -380,6 +395,13 @@ def register():
 
     nextCursor = hashlib.sha1(str(comments[-1].gamer_id).encode('utf-8')).hexdigest() if comments else None
 
+    campaignComments = {}
+    campaignids = [f"level_{data['id']}" for campaign in master["campaign"] for data in master["campaignlevel"][campaign]]
+    compaignWithComments = dict(db.session.query(Comment.group_key, func.count(Comment.commentId)).filter(Comment.group_key.in_(campaignids)).group_by(Comment.group_key).all())
+    for key in campaignids:
+        id = int(key.removeprefix("level_"))
+        campaignComments[id] = compaignWithComments[key] if key in compaignWithComments else 0
+
     return jsonify({
         "result": {
             "token": newGamer.token,
@@ -390,7 +412,7 @@ def register():
         "updated": {
             # 'follows': newGamer.follows,
             'campaignInfo': {
-                'comments': {}
+                'comments': campaignComments
             },
             'feeds': {
                 'all_loaded': len(comments) < 10,

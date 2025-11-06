@@ -142,14 +142,9 @@ def render_map(map: dict[int]):
     return img.rotate(-270, expand=True)
 
 def sortStringify(obj, indent=None):
-    def sorted_dict(d):
-        if not isinstance(d, dict):
-            return d
-        return {k: sorted_dict(v) for k, v in sorted(d.items())}
-    
-    return json.dumps(sorted_dict(obj), indent=indent, separators=(',', ':'), ensure_ascii=False)
+    return json.dumps(obj, sort_keys=True, separators=(',', ':'))
  
-def jsonToCrc(table: dict, token: str):
+def jsonToCrc(table: str, token: str):
     string = table
     if token != "undefined":
         string += token

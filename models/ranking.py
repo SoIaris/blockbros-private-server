@@ -4,7 +4,7 @@ from datetime import datetime
 class Ranking(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     creator = db.Column(db.BigInteger)
-    levelId = db.Column(db.BigInteger, nullable=False)
+    levelId = db.Column(db.BigInteger, nullable=True)   
     time = db.Column(db.Integer, nullable=False)
     cleared = db.Column(db.Boolean, default=False)
     createdAt = db.Column(db.BigInteger, default=0)
