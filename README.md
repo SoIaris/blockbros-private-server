@@ -1,4 +1,5 @@
 I'm not really on BlockBros anymore or have interacted with BlockBros recently. I'm also not a great Python coder, so sorry if anything is poorly written this was just a learning experience.  
+I'm not really on BlockBros anymore or have interacted with BlockBros recently. I'm also not a great Python coder, so sorry if anything is poorly written this was just a learning experience.  
 Enjoy :)
 
 ---
