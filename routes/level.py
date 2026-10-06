@@ -8,24 +8,41 @@ from models.ranking import Ranking
 from models.video import Video
 from models.rating import Rating
 from models.play import Play
-
-from app import limiter
-from datetime import datetime
 from sqlalchemy import func
-import time
-from util import authentication as auth
+from app import limiter
+
 import util.filter as filter
+import extensions
+import json as Json
+import hashlib
+import time
+import re
+
+from util import authentication as auth
+from datetime import datetime
 
 level = Blueprint("level", __name__)
 
 from app import limiter
 limiter.limit("300 per minute")(level)
 
-import extensions
-import json as Json
-import hashlib
-import re
-
+def LevelPostLimit():
+    try:
+        authorization = request.headers.get("authorization")
+        if not authorization:
+            return False
+            
+        id, token = authorization.split(":")
+        
+        gamer: Gamer = Gamer.query.filter_by(id=id).first()
+        if not gamer:
+            return False
+            
+        return gamer.playerPt > 5000
+        
+    except Exception as e:
+        return False
+    
 @level.route("/clear", methods=["POST"])
 @auth.check_auth
 def clear():
@@ -58,7 +75,7 @@ def clear():
     ranking: Ranking = Ranking.query.filter_by(creator=gamer.id, levelId=levelSearch.id, cleared=False).order_by(Ranking.time.asc()).first()
     difficulty = extensions.calculateDifficulty(levelSearch.uuCount, levelSearch.uuClearCount)
     previousClear = Ranking.query.filter_by(creator=gamer.id, levelId=levelSearch.id,cleared=True).first() is not None
-    print(previousClear)
+    
     if ranking:
         if time < ranking.time:
             ranking.time = time
@@ -505,7 +522,6 @@ def delete():
         "timestamp": round(datetime.timestamp(datetime.now()))
     })
     
-
 @level.route("/list", methods=["POST"])
 @auth.check_auth
 def list():
@@ -802,25 +818,8 @@ def ranklist():
         "timestamp": round(datetime.timestamp(datetime.now()))
     })
 
-def over5bp():
-    try:
-        authorization = request.headers.get("authorization")
-        if not authorization:
-            return False
-            
-        id, token = authorization.split(":")
-        
-        gamer: Gamer = Gamer.query.filter_by(id=id).first()
-        if not gamer:
-            return False
-            
-        return gamer.playerPt > 5000
-        
-    except Exception as e:
-        return False
-
 @level.route("/post", methods=["POST"])
-@limiter.limit("5/day", exempt_when=lambda: over5bp())
+@limiter.limit("5/day", exempt_when=lambda: LevelPostLimit())
 @auth.check_auth
 def post():
     json = request.json

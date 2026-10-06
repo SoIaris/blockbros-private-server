@@ -1,12 +1,12 @@
 from app import db
 
 from datetime import datetime
-from extensions import master
 from sqlalchemy.ext.mutable import MutableList, MutableDict
 
 import hashlib
 import random
 import string
+import extensions
 
 def generateAltPassword():
     lowercase = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'k', 'l', 'm', 'n', 'p', 'q', 'r', 's', 't', 'u', 'w', 'x', 'z']
@@ -30,7 +30,7 @@ class Gamer(db.Model):
     createdAt = db.Column(db.BigInteger, default=0)
     emblemCount = db.Column(db.BigInteger, default=0)
     followerCount = db.Column(db.BigInteger, default=0)
-    gem = db.Column(db.BigInteger, default=master["config"]["signup_gems"])
+    gem = db.Column(db.BigInteger, default=extensions.get_master()["config"]["signup_gems"])
     homeLevel = db.Column(db.JSON, default=None)
     hasUnfinishedIAP = db.Column(db.Boolean, default=True)
     lang = db.Column(db.String(10), default="en")

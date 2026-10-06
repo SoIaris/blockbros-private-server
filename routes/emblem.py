@@ -8,7 +8,7 @@ import json as Json
 
 from models.emblem import Emblem
 from models.gamer import Gamer
-from extensions import master
+from extensions import get_master
 
 from datetime import datetime
 import util.authentication as auth
@@ -331,6 +331,7 @@ def gift():
     
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id).first()
+    master = get_master()
 
     findGamer: Gamer = Gamer.query.filter_by(id=json["target_gamer_id"]).first()
     if not findGamer:

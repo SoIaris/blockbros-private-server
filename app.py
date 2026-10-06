@@ -4,6 +4,7 @@ from flask_migrate import Migrate
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_compress import Compress
 from sqlalchemy import func
 
 from datetime import datetime
@@ -33,12 +34,15 @@ class config:
     SQLALCHEMY_DATABASE_URI = os.getenv("POSTGRES_URL") # PostgresSQL
     VPNAPI_KEY = os.getenv("VPNAPI_KEY") # https://vpnapi.io/
 
-def create_app():
+    COMPRESS_MIN_SIZE = 0
+    COMPRESS_ALGORITHM = ["gzip"]
 
+def create_app():
     app = Flask(__name__, template_folder="routes")
-    print(config.SQLALCHEMY_DATABASE_URI)
     app.config.from_object(config)
+    
     CORS(app)
+    Compress(app)
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -205,9 +209,10 @@ def create_app():
                                                 db.session.add(ratingn)
                         db.session.commit()
 
-            return r
         except Exception as e:
             print(f"Batch error: {e}")
+            db.session.rollback()
+        return r
 
     @app.before_request
     def before_request_func(): # shit way of detecting proxy but it works
@@ -228,7 +233,7 @@ def create_app():
             "error": "code=404, message=Not Found",
             "message": "Not Found"
         }), 404
-    
+
     @app.errorhandler(429)
     def handle_429(error):
         return jsonify({
@@ -248,8 +253,10 @@ def create_app():
         return jsonify({
             "error": "code=405, message=Forbidden",
             "message": "Forbidden"
-        }), 405
-    
+            }), 405
+
+    master = extensions.get_master()
+    print(f'version {master["config"]['assetversion']}.{master["version"]}')
     return app
 
 app = create_app()

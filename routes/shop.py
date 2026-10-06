@@ -229,9 +229,10 @@ def spin():
     gamer: Gamer = Gamer.query.filter_by(id=id).first()
     
     type = json.get("type")
-    print(type)
+    master = extensions.get_master()
+    
     if type == 0:
-        if not gamer.gem >= extensions.master["config"]["character_gacha_price"]:
+        if not gamer.gem >= master["config"]["character_gacha_price"]:
             return jsonify({
                 'reason': 'validation_exception'
             }), 400
@@ -239,7 +240,7 @@ def spin():
         print(gamer.inventory)
         inventory = Json.loads(gamer.inventory)
         characterId = extensions.randomAvatar()
-        gamer.gem -= extensions.master["config"]["character_gacha_price"]
+        gamer.gem -= master["config"]["character_gacha_price"]
 
         inventory["avatars"].append(characterId["id"])
 

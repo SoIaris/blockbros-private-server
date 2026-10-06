@@ -819,10 +819,12 @@ def put():
             "updated": {},
             "timestamp": round(datetime.timestamp(datetime.now()))
         })
+
+    master = extensions.get_master()
     
-    if gamer.nameVersion != 0 and gamer.gem >= extensions.master["config"]["change_name_cost"]:
-        gamer.gem -= extensions.master["config"]["change_name_cost"]
-    elif gamer.gem <= extensions.master["config"]["change_name_cost"] and gamer.nameVersion != 0:
+    if gamer.nameVersion != 0 and gamer.gem >= master["config"]["change_name_cost"]:
+        gamer.gem -= master["config"]["change_name_cost"]
+    elif gamer.gem <= master["config"]["change_name_cost"] and gamer.nameVersion != 0:
         return jsonify({
             "success": False,
             "result": {},

@@ -4,9 +4,9 @@ Flask_Cors==5.0.0
 flask_limiter==3.12
 Flask_Migrate==4.1.0
 flask_sqlalchemy==3.1.1
+flask_compress==1.25
 SQLAlchemy==2.0.37
 psycopg2-binary~=2.9.3
 requests==2.32.3
-Pillow==11.2.1
 tqdm==4.67.1
 python-dotenv==1.1.1

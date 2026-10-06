@@ -2,10 +2,8 @@ import json
 import random
 import hashlib
 
-from PIL import Image
-from flask import request
 from datetime import datetime
-from io import BytesIO
+from app import db
 
 deleted_user = {
     "adminLevel": 0,
@@ -29,10 +27,18 @@ deleted_user = {
     "visibleAt": 0
 },
 
-with open("static/master.json", 'r') as file:
-    master = json.load(file)
+# made this a function so it gets a updated master if changed without restarting the api
+def get_master():
+    with open("master.json", 'r') as file:
+        master = json.load(file)
+
+        return master
+
+    return None
 
 def GetShopItem(category, id):
+    master = get_master()
+
     for data in master["shop"][category]:
         if data["id"] == id:
             return data
@@ -40,6 +46,8 @@ def GetShopItem(category, id):
     return None
 
 def getDifficultyReward(difficulty: int):
+    master = get_master()
+
     rewards = []
     for reward in master["clearreward"][str(difficulty)]:
         rewards.extend([reward] * reward['weight'])
@@ -77,6 +85,7 @@ def decodeBlock(value):
     }
 
 def randomAvatar():
+    master = get_master()
     avatars = {id: av for id, av in master["avatar"].items() if av.get("ispublic", False)}
 
     total = sum(av["weight"] for av in avatars.values())
@@ -94,6 +103,7 @@ def randomAvatar():
 
 def loginRewardAmount():
     date = datetime.now()
+    master = get_master()
 
     if date.month == 2 and 23 <= date.day <= 28:
         return master["config"]["boost_login_bonus_gem"]
@@ -113,37 +123,10 @@ def loginRewardAmount():
         return master["config"]["boost_login_bonus_gem"]
     else:
         return master["config"]["login_bonus_gem"]
-    
-def get_coordinates(index):
-    y = (index // 20) * 32
-    x = (index - ((index // 20) * 20)) * 32
-    return {"x": x, "y": y}
-
-def pil_to_png_bytes(img):
-    with BytesIO() as buffer:
-        img.save(buffer, format="PNG")
-        return buffer.getvalue()
-    
-def render_map(map: dict[int]):
-    newMap = map
-    img = Image.new('RGBA', (640, 640), (0, 0, 0, 0))
-    
-    for i in range(len(newMap)):
-        block_value = newMap[i]
-        if not block_value:
-            continue
-        
-        decoded_block = decodeBlock(block_value)
-        cords = get_coordinates(i)
-        path = f"static/blocks/block{decoded_block['blockType']}_{decoded_block["attr"]}.png"
-        blockimg = Image.open(path).rotate(-90)
-        img.paste(blockimg, (cords['x'], cords['y']), blockimg)
-
-    return img.rotate(-270, expand=True)
 
 def sortStringify(obj, indent=None):
     return json.dumps(obj, sort_keys=True, separators=(',', ':'))
- 
+
 def jsonToCrc(table: str, token: str):
     string = table
     if token != "undefined":
@@ -151,5 +134,3 @@ def jsonToCrc(table: str, token: str):
 
     crc = hashlib.md5((string).encode()).hexdigest()
     return crc
-
-loginRewardAmount()

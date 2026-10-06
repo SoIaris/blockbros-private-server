@@ -8,7 +8,7 @@ from models.comment import Comment
 from models.emblem import Emblem
 
 from datetime import datetime, timedelta
-from extensions import sortStringify, jsonToCrc, master, loginRewardAmount
+from extensions import sortStringify, jsonToCrc, get_master, loginRewardAmount
 from app import limiter
 import hashlib
 import string
@@ -108,6 +108,7 @@ def alt_login():
             })
 
     nextCursor = hashlib.sha1(str(comments[-1].gamer_id).encode('utf-8')).hexdigest() if comments else None
+    master = get_master()
 
     campaignComments = {}
     campaignids = [f"level_{data['id']}" for campaign in master["campaign"] for data in master["campaignlevel"][campaign]]
@@ -262,6 +263,7 @@ def login():
             })
 
     nextCursor = hashlib.sha1(str(comments[-1].gamer_id).encode('utf-8')).hexdigest() if comments else None
+    master = get_master()
 
     campaignComments = {}
     campaignids = [f"level_{data['id']}" for campaign in master["campaign"] for data in master["campaignlevel"][campaign]]
@@ -335,7 +337,8 @@ def register():
     except Exception as e:
         print(f"register error: {e}")
         return jsonify({}), 400
-
+    
+    master = get_master()
     if request.json["key"] != master["config"]["register_key"]:
         return jsonify({
             'success': False, 
@@ -394,6 +397,7 @@ def register():
             })
 
     nextCursor = hashlib.sha1(str(comments[-1].gamer_id).encode('utf-8')).hexdigest() if comments else None
+    master = get_master()
 
     campaignComments = {}
     campaignids = [f"level_{data['id']}" for campaign in master["campaign"] for data in master["campaignlevel"][campaign]]
