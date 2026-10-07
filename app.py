@@ -1,5 +1,5 @@
-from flask import Flask, jsonify, request, render_template, send_file
-from flask_sqlalchemy import SQLAlchemy, pagination
+from flask import Flask, jsonify, request, render_template
+from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -7,7 +7,6 @@ from flask_limiter.util import get_remote_address
 from flask_compress import Compress
 from sqlalchemy import func
 
-from datetime import datetime
 from dotenv import load_dotenv
 
 db = SQLAlchemy()
@@ -25,14 +24,12 @@ from models.play import Play
 
 import extensions
 import requests
-import json as Json
 import os
-
-# TODO: when deleting level it should remove any builderPt it gave the creator and any data related to level\
 
 class config:
     SQLALCHEMY_DATABASE_URI = os.getenv("POSTGRES_URL") # PostgresSQL
     VPNAPI_KEY = os.getenv("VPNAPI_KEY") # https://vpnapi.io/
+    CURSOR_SECRET = os.getenv("CURSOR_SECRET")
 
     COMPRESS_MIN_SIZE = 0
     COMPRESS_ALGORITHM = ["gzip"]

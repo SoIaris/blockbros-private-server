@@ -1,41 +1,28 @@
 from flask import Blueprint, jsonify, request
-from sqlalchemy import func
+from app import db, limiter, config
 
-from app import db
+from sqlalchemy import func, and_, or_
 from models.comment import Comment
 from models.gamer import Gamer
 from models.emblem import Emblem
 from models.level import Level
 
 from datetime import datetime
+from util import wraps, filter
+from util import cursor as cursor_key
 
-import util.authentication as auth
-import util.filter as filter
 import json as Json
-import extensions
 import re
 
 comment = Blueprint("comment", __name__)
-
-from app import limiter
 limiter.limit("300 per minute")(comment)
 
 @comment.route("/delete", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def delete():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
-    id, _ = request.headers["authorization"].split(":")
-    gamer: Gamer 
+    id, token = request.headers["authorization"].split(":")
 
     comment: Comment = Comment.query.filter_by(commentId=json["comment_id"]).first()
     if not comment:
@@ -69,20 +56,10 @@ def delete():
     })
         
 @comment.route("/post", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def post():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        print(request.headers["Crc"], crc)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-
     id, token = request.headers["authorization"].split(":")
 
     gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
@@ -248,94 +225,112 @@ def post():
     })
 
 @comment.route("/list", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def list():
-    json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
-    id, token = request.headers["authorization"].split(":")
-    sgamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
-    cursor = json.get("cursor")
-    index = json.get("index")
-    
-    if json["group_key"] == "feed_vip" and sgamer.adminLevel < 1:
+    body = request.json
+    gamerId, token = request.headers["authorization"].split(":")
+    gamer: Gamer = Gamer.query.filter_by(id=gamerId, token=token).first()
+    groupKey = body["group_key"]
+    cursor = body.get("cursor")
+    index = body.get("index", 0)
+    pageSize = 10
+ 
+    if groupKey == "feed_vip" and gamer.adminLevel < 1:
         return jsonify({
             "success": False,
             "result": {},
             "updated": {},
             "timestamp": round(datetime.timestamp(datetime.now()))
         })
-
-    baseQuery = Comment.query.filter_by(group_key=json["group_key"]).order_by(Comment.createdAt.desc())
-    
+ 
+    query = Comment.query.filter_by(group_key=groupKey).order_by(Comment.createdAt.desc(), Comment.commentId.desc())
+ 
     if cursor:
         try:
-            position = db.session.query(func.count(Comment.commentId)).filter(
-                Comment.group_key == json["group_key"],
-                Comment.createdAt >= db.session.query(Comment.createdAt).filter(Comment.commentId == int(cursor)).scalar_subquery()
-            ).scalar()
-            
-            pagination = baseQuery.paginate(page=(position // 10) + 1, per_page=10, error_out=False)
+            decodedCursor = cursor_key.readCursor(cursor, config.CURSOR_SECRET)
         except ValueError:
-            return jsonify({"error": "Invalid cursor"}), 400
-    else:
-        pagination = baseQuery.paginate(page=1, per_page=10, error_out=False)
-
-    comments = pagination.items
-    items = []
-    for comment in comments:
-        gamer: Gamer = Gamer.query.filter_by(id=comment.gamer_id).first()
-        if gamer:   
-            items.append({
-                "args": comment.args,
-                "commentId": comment.commentId,
-                "createdAt": comment.createdAt,
-                "gamer": {
-                    "adminLevel": gamer.adminLevel,
-                    "avatar": gamer.avatar,
-                    "builderPt": gamer.builderPt,
-                    "campaigns": gamer.campaigns,
-                    "channel": gamer.channel,
-                    "clearCount": gamer.clearCount,
-                    "commentableAt": gamer.commentableAt,
-                    "country": gamer.country,
-                    "createdAt": gamer.createdAt,
-                    "emblemCount": gamer.emblemCount,
-                    "followerCount": gamer.followerCount,
-                    "gamerId": gamer.gamer_id,
-                    "gem": gamer.gem,
-                    "hasUnfinishedIAP": gamer.hasUnfinishedIAP,
-                    "id": gamer.id,
-                    "inventory": Json.loads(gamer.inventory),
-                    "lang": gamer.lang,
-                    **({"homeLevel": gamer.homeLevel} if gamer.homeLevel is not None else {}),
-                    "lastLoginAt": gamer.lastLoginAt,
-                    "levelCount": gamer.levelCount,
-                    "maxVideoId": gamer.maxVideoId,
-                    "nameVersion": gamer.nameVersion,
-                    "nickname": gamer.nickname,
-                    "playerPt": gamer.playerPt,
-                    "researches": gamer.researches,
-                    "visibleAt": gamer.visibleAt
-                },
-                "message": comment.message,
-                "type": comment.type
+            return jsonify({
+                "success": False,
+                "result": {},
+                "updated": {},
+                "timestamp": round(datetime.timestamp(datetime.now()))
             })
-
+ 
+        query = query.filter(or_(
+            Comment.createdAt < decodedCursor["createdAt"],
+            and_(Comment.createdAt == decodedCursor["createdAt"], Comment.commentId < decodedCursor["id"])
+        ))
+ 
+    comments = query.limit(pageSize + 1).all()
+    hasMore = len(comments) > pageSize
+    comments = comments[:pageSize]
+    nextCursor = None
+ 
+    if hasMore:
+        nextCursor = cursor_key.makeCursor({
+            "createdAt": comments[-1].createdAt,
+            "id": comments[-1].commentId
+        }, config.CURSOR_SECRET)
+ 
+    authors = {}
+    if comments:
+        authorIds = {comment.gamer_id for comment in comments}
+        authors = {author.id: author for author in Gamer.query.filter(Gamer.id.in_(authorIds)).all()}
+ 
+    inventories = {}
+    items = []
+ 
+    for comment in comments:
+        author = authors.get(comment.gamer_id)
+        if not author:
+            continue
+ 
+        if author.id not in inventories:
+            inventories[author.id] = Json.loads(author.inventory)
+ 
+        items.append({
+            "args": comment.args,
+            "commentId": comment.commentId,
+            "createdAt": comment.createdAt,
+            "gamer": {
+                "adminLevel": author.adminLevel,
+                "avatar": author.avatar,
+                "builderPt": author.builderPt,
+                "campaigns": author.campaigns,
+                "channel": author.channel,
+                "clearCount": author.clearCount,
+                "commentableAt": author.commentableAt,
+                "country": author.country,
+                "createdAt": author.createdAt,
+                "emblemCount": author.emblemCount,
+                "followerCount": author.followerCount,
+                "gamerId": author.gamer_id,
+                "gem": author.gem,
+                "hasUnfinishedIAP": author.hasUnfinishedIAP,
+                "id": author.id,
+                "inventory": inventories[author.id],
+                "lang": author.lang,
+                **({"homeLevel": author.homeLevel} if author.homeLevel is not None else {}),
+                "lastLoginAt": author.lastLoginAt,
+                "levelCount": author.levelCount,
+                "maxVideoId": author.maxVideoId,
+                "nameVersion": author.nameVersion,
+                "nickname": author.nickname,
+                "playerPt": author.playerPt,
+                "researches": author.researches,
+                "visibleAt": author.visibleAt
+            },
+            "message": comment.message,
+            "type": comment.type
+        })
+ 
     return jsonify({
         "result": {
-            'all_loaded': not pagination.has_next,
-            **({'cursor': str(comments[-1].commentId)} if pagination.has_next else {}),
+            "all_loaded": not hasMore,
+            **({"cursor": nextCursor} if nextCursor is not None else {}),
             "index": index + len(comments),
-            'items': items,
+            "items": items,
         },
         "success": True,
         "updated": {},

@@ -1,31 +1,20 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
+from app import limiter
+
+from util import wraps
+from datetime import datetime
 
 import extensions
-import json as Json
 import gzip
-
-from datetime import datetime
-from flask import Response
-from util import authentication as auth
+import json as Json
 
 master = Blueprint("master", __name__)
-
-from app import limiter
 limiter.limit("300 per minute")(master)
 
 # i think this is disabled in actual BlockBros i dont know so i had to go off of src.js
 @master.route("/update", methods=["POST"])
+@wraps.crc_required
 def update():
-    json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-
     master = extensions.get_master()
 
     if int(request.headers.get("Master-Version")) == master["version"]:

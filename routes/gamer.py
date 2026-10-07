@@ -1,41 +1,33 @@
 from flask import Blueprint, request, jsonify
-from sqlalchemy import func
+from app import db, limiter, config
 
+from sqlalchemy import func, or_, and_, false
 from models.gamer import Gamer
 from models.emblem import Emblem
 from models.comment import Comment
 
 from datetime import datetime
-from app import db
+from util import wraps
+from util import cursor as cursor_key
+
+import extensions
 import hashlib
 import json as Json
-
-import extensions as extensions
-from util import authentication as auth
-from app import limiter
 
 gamerr = Blueprint("gamer", __name__)
 limiter.limit("300 per minute")(gamerr)
 
 @gamerr.route("/follow/put", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def follow():
-    json_data = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json_data), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
+    json = request.json
     id, token = request.headers["authorization"].split(":")
 
     gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
 
-    action = json_data.get("action")
-    gamer_id = json_data.get("gamer_id")
+    action = json.get("action")
+    gamer_id = json.get("gamer_id")
 
     targetGamer: Gamer = Gamer.query.filter_by(id=gamer_id).first()
     if not targetGamer:
@@ -73,105 +65,125 @@ def follow():
     })
 
 @gamerr.route("/list", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def list():
-    json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
-    id, token = request.headers["authorization"].split(":")
-
-    gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
-    
-    index = json.get("index")
-    type = json.get('type')
-    cursor = json.get("cursor")
-
-    base_query = db.session.query(Gamer)
-
-    if type == "topPlayer":
-        base_query = base_query.order_by(Gamer.playerPt.desc())
-    elif type == "topBuilder":
-        base_query = base_query.order_by(Gamer.builderPt.desc())
-    elif type == "active":
-        base_query = base_query.order_by(Gamer.lastLoginAt.desc())
-    elif type == "follows":
-        follows = Json.loads(gamer.follows)
-        base_query = base_query.filter(Gamer.id.in_(follows["follows"]))
-    elif type == "followers":
-        follows = Json.loads(gamer.follows)
-        base_query = base_query.filter(Gamer.id.in_(follows["followers"]))
-
-    if cursor:
-        position = db.session.query(func.count(Gamer.id)).scalar()
-        pagination = base_query.paginate(page=(position // 10) + 1, per_page=10, error_out=False)
-    else:
-        pagination = base_query.paginate(page=1, per_page=10, error_out=False)
-
-    gamers = pagination.items
-
-    items = []
-    for gamer in gamers:
-        items.append({
-            "adminLevel": gamer.adminLevel,
-            "avatar": gamer.avatar,
-            "builderPt": gamer.builderPt,
-            "campaigns": gamer.campaigns,
-            "channel": gamer.channel,
-            "clearCount": gamer.clearCount,
-            "commentableAt": gamer.commentableAt,
-            "country": gamer.country,
-            "createdAt": gamer.createdAt,
-            "emblemCount": gamer.emblemCount,
-            "followerCount": gamer.followerCount,
-            "gamerId": gamer.gamer_id,
-            "gem": gamer.gem,
-            "hasUnfinishedIAP": gamer.hasUnfinishedIAP,
-            "id": gamer.id,
-            "inventory": Json.loads(gamer.inventory),
-            "lang": gamer.lang,
-            **({"homeLevel": gamer.homeLevel} if gamer.homeLevel is not None else {}),
-            "lastLoginAt": gamer.lastLoginAt,
-            "levelCount": gamer.levelCount,
-            "maxVideoId": gamer.maxVideoId,
-            "nameVersion": gamer.nameVersion,
-            "nickname": gamer.nickname,
-            "playerPt": gamer.playerPt,
-            "researches": gamer.researches,
-            "visibleAt": gamer.visibleAt
+    body = request.json
+    gamerId, token = request.headers["authorization"].split(":")
+    gamer: Gamer = Gamer.query.filter_by(id=gamerId, token=token).first()
+    listType = body.get("type")
+    index = body.get("index")
+    cursor = body.get("cursor")
+    pageSize = 10
+ 
+    query = db.session.query(Gamer)
+    sortColumn = None
+ 
+    if listType == "topPlayer":
+        sortColumn = Gamer.playerPt
+ 
+    if listType == "topBuilder":
+        sortColumn = Gamer.builderPt
+ 
+    if listType == "active":
+        sortColumn = Gamer.lastLoginAt
+ 
+    if listType == "follows":
+        sortColumn = Gamer.id
+        followedIds = Json.loads(gamer.follows)["follows"]
+        query = query.filter(Gamer.id.in_(followedIds)) if followedIds else query.filter(false())
+ 
+    if listType == "followers":
+        sortColumn = Gamer.id
+        followerIds = Json.loads(gamer.follows)["followers"]
+        query = query.filter(Gamer.id.in_(followerIds)) if followerIds else query.filter(false())
+ 
+    if sortColumn is None:
+        return jsonify({
+            "success": False,
+            "result": {},
+            "updated": {},
+            "timestamp": round(datetime.timestamp(datetime.now()))
         })
-
+ 
+    query = query.add_columns(sortColumn.label("sortValue")).order_by(sortColumn.desc(), Gamer.id.desc())
+ 
+    if cursor:
+        try:
+            decodedCursor = cursor_key.readCursor(cursor, config.CURSOR_SECRET)
+        except ValueError:
+            return jsonify({
+                "success": False,
+                "result": {},
+                "updated": {},
+                "timestamp": round(datetime.timestamp(datetime.now()))
+            })
+        
+        query = query.filter(or_(
+            sortColumn < decodedCursor["value"],
+            and_(sortColumn == decodedCursor["value"], Gamer.id < decodedCursor["id"])
+        ))
+ 
+    rows = query.limit(pageSize + 1).all()
+    hasMore = len(rows) > pageSize
+    rows = rows[:pageSize]
+    players = [row[0] for row in rows]
+    nextCursor = None
+ 
+    if hasMore:
+        nextCursor = cursor_key.makeCursor({
+            "value": int(rows[-1][1]),
+            "id": rows[-1][0].id
+        }, config.CURSOR_SECRET)
+ 
+    items = []
+    for player in players:
+        items.append({
+            "adminLevel": player.adminLevel,
+            "avatar": player.avatar,
+            "builderPt": player.builderPt,
+            "campaigns": player.campaigns,
+            "channel": player.channel,
+            "clearCount": player.clearCount,
+            "commentableAt": player.commentableAt,
+            "country": player.country,
+            "createdAt": player.createdAt,
+            "emblemCount": player.emblemCount,
+            "followerCount": player.followerCount,
+            "gamerId": player.gamer_id,
+            "gem": player.gem,
+            "hasUnfinishedIAP": player.hasUnfinishedIAP,
+            "id": player.id,
+            "inventory": Json.loads(player.inventory),
+            "lang": player.lang,
+            **({"homeLevel": player.homeLevel} if player.homeLevel is not None else {}),
+            "lastLoginAt": player.lastLoginAt,
+            "levelCount": player.levelCount,
+            "maxVideoId": player.maxVideoId,
+            "nameVersion": player.nameVersion,
+            "nickname": player.nickname,
+            "playerPt": player.playerPt,
+            "researches": player.researches,
+            "visibleAt": player.visibleAt
+        })
+ 
     return jsonify({
         "success": True,
         "result": {
-            'all_loaded': not pagination.has_next,
-            **({'cursor': str(gamers[-1].id)} if pagination.has_next else {}),
-            "index": index + len(gamers),
-            'items': items,
+            "all_loaded": not hasMore,
+            **({"cursor": nextCursor} if nextCursor is not None else {}),
+            "index": index + len(items),
+            "items": items,
         },
         "updated": {},
         "timestamp": round(datetime.timestamp(datetime.now()))
     })
 
 @gamerr.route("/claimGift", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def claimgift():
     json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-     
     id, token = request.headers["authorization"].split(":")
 
     gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
@@ -263,18 +275,10 @@ def claimgift():
     })
 
 @gamerr.route("/channel/set", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def channelset():
     json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-     
     id, token = request.headers["authorization"].split(":")
 
     search = Gamer.query.filter_by(id=id, token=token)
@@ -327,17 +331,10 @@ def channelset():
     })
 
 @gamerr.route("/email", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def email():
     json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
     
     return jsonify({
         "success": True,
@@ -347,18 +344,10 @@ def email():
     })
 
 @gamerr.route("/ban", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def ban():
     json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-         
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
     if gamer.adminLevel < 2:
@@ -368,7 +357,6 @@ def ban():
 
     gamer_id = json.get("gamer_id")
     enabled = json.get("enabled")
-    print(enabled)
 
     searchGamer: Gamer = Gamer.query.filter_by(gamer_id=gamer_id).first()
     if not searchGamer:
@@ -421,18 +409,10 @@ def ban():
     })
 
 @gamerr.route("/sync", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def sync():
     json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-         
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
 
@@ -501,19 +481,10 @@ def sync():
     })
 
 @gamerr.route("/get", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def get():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     gamer: Gamer = Gamer.query.filter_by(gamer_id=json["gamer_id"]).first()
     if not gamer:
         return jsonify({
@@ -558,19 +529,10 @@ def get():
     })
 
 @gamerr.route("/search", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def search():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     gamer: Gamer = Gamer.query.filter(func.lower(Gamer.nickname) == func.lower(json["nickname"])).first()
     if not gamer:
         return jsonify({
@@ -614,19 +576,10 @@ def search():
     })
 
 @gamerr.route("/warn", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def warn():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     gamerid = json.get("gamer_id")
 
     id, token = request.headers["authorization"].split(":")
@@ -649,7 +602,6 @@ def warn():
         })
     
     searchGamer.commentableAt = datetime.now().timestamp() + json["duration"]
-    print(searchGamer.commentableAt)
     db.session.commit()
 
     return jsonify({
@@ -687,19 +639,10 @@ def warn():
     })
 
 @gamerr.route("/nickname/check", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def checknickname():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-         
     checkNickname = Gamer.query.filter(func.lower(Gamer.nickname) == func.lower(json["nickname"])).first()
     if checkNickname:
         return jsonify({
@@ -717,18 +660,10 @@ def checknickname():
     })
 
 @gamerr.route("/adminGift", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def admingift():
     json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-     
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
 
@@ -774,30 +709,14 @@ def admingift():
     })
         
 @gamerr.route("/put", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def put():
     json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-     
     id, token = request.headers["authorization"].split(":")
 
-    search = Gamer.query.filter_by(id=id, token=token)
-    gamer: Gamer = search.first()
-    if not gamer:
-        return jsonify({
-            "success": True,
-            "result": {},
-            "updated": {},
-            "timestamp": round(datetime.timestamp(datetime.now()))
-        })
-    
+    gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
+
     if len(json["nickname"]) > 10:
         return jsonify({
             'reason': 'sanitize_exception'

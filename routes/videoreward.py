@@ -1,33 +1,22 @@
 from flask import Blueprint, request, jsonify
-from app import db
+from app import db, limiter
 
-from datetime import datetime
 from models.gamer import Gamer
 from models.video import Video
 
+from datetime import datetime
+from util import wraps
+
 import json as Json
-import extensions
-from util import authentication as auth
 
 videoreward = Blueprint('/videoreward', __name__)
-
-from app import limiter
 limiter.limit("300 per minute")(videoreward)
 
 @videoreward.route("/claim", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def claim():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id).first()
 

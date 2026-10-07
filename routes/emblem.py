@@ -1,38 +1,25 @@
 from flask import Blueprint, request, jsonify
-
-from app import db
-
-import extensions
-import hashlib
-import json as Json
+from app import db, limiter
 
 from models.emblem import Emblem
 from models.gamer import Gamer
-from extensions import get_master
 
 from datetime import datetime
-import util.authentication as auth
-import util.filter as filter
+from util import wraps, filter
+
+import json as Json
+import extensions
+import hashlib
 
 emblem = Blueprint("emblem", __name__)
 
-from app import limiter
 limiter.limit("300 per minute")(emblem)
 
 @emblem.route("/update", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def update():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400
-    
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
 
@@ -134,19 +121,10 @@ def update():
     })
 
 @emblem.route("/delete", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def delete():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400
-    
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
 
@@ -226,19 +204,10 @@ def delete():
     })
 
 @emblem.route("/givenList", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def list():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400
-    
     cursor = json.get("cursor")
     gamerId = json.get("gamer_id")
     index = json.get("index")
@@ -316,22 +285,13 @@ def list():
     })
 
 @emblem.route("/gift", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def gift():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id).first()
-    master = get_master()
+    master = extensions.get_master()
 
     findGamer: Gamer = Gamer.query.filter_by(id=json["target_gamer_id"]).first()
     if not findGamer:
@@ -415,19 +375,10 @@ def gift():
     })
 
 @emblem.route("/post", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def post_emblem():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id).first()
 
@@ -537,20 +488,12 @@ def post_emblem():
     }) 
 
 @emblem.route("/get", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def get():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     emblem: Emblem = Emblem.query.filter_by(refId=json["refId"]).first()
+
     if not emblem:
         return jsonify({
             "success": False,
@@ -634,19 +577,11 @@ def get():
     })
 
 @emblem.route("/ownList", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def post():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-
+    
     cursor = json.get("cursor")
     index = json.get("index")
     id, token = request.headers["authorization"].split(":")

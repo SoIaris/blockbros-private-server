@@ -1,5 +1,4 @@
 I'm not really on BlockBros anymore or have interacted with BlockBros recently. I'm also not a great Python coder, so sorry if anything is poorly written this was just a learning experience.  
-I'm not really on BlockBros anymore or have interacted with BlockBros recently. I'm also not a great Python coder, so sorry if anything is poorly written this was just a learning experience.  
 Enjoy :)
 
 ---
@@ -16,7 +15,9 @@ For database hosting, you'll need to use PostgreSQL. For a free 500 MB option, I
 
 For the `VPNAPI_KEY` env, you'll need to get an API key from [vpnapi.io](https://vpnapi.io/).
 
-.env.example should be named .env just remove the .example
+for the `CURSOR_SECRET` you can just make this a random 10 character string or something
+
+.env.example should be named to .env just remove the .example
 
 ### Contributing
 Feel free to contribute to this project!

@@ -1,15 +1,16 @@
 from flask import Blueprint, request, jsonify
+from app import db, limiter, config
 
-from app import db
 from sqlalchemy import func
-
 from models.gamer import Gamer
 from models.comment import Comment
 from models.emblem import Emblem
 
-from datetime import datetime, timedelta
-from extensions import sortStringify, jsonToCrc, get_master, loginRewardAmount
-from app import limiter
+from datetime import datetime
+from util import wraps
+from util import cursor as cursor_key
+
+import extensions
 import hashlib
 import string
 import random
@@ -21,17 +22,9 @@ from app import limiter
 limiter.limit("300 per minute")(auth)
 
 @auth.route("/alt_login", methods=["POST"])
+@wraps.crc_required
 def alt_login():
     json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = jsonToCrc(sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400  
-    
     _, token = request.headers["authorization"].split(":")
 
     search = Gamer.query.filter_by(altPassword=json["password"], gamer_id=json["gamer_id"])
@@ -56,18 +49,17 @@ def alt_login():
         hoursPassed = secondsPassed / 3600
         print(hoursPassed)
         if hoursPassed >= 24 and hoursPassed <= 48:
-            loginBonus = loginRewardAmount()
-            gamer.gem += loginRewardAmount()
+            loginBonus = extensions.loginRewardAmount()
+            gamer.gem += extensions.loginRewardAmount()
             gamer.lastStreaklogin = cts
         elif hoursPassed >= 48:
             gamer.lastStreaklogin = cts
             
     db.session.commit()
 
-    query = db.session.query(Comment).order_by(Comment.createdAt.desc())
-    comments = query.filter_by(group_key="feed").limit(10).all()
-
+    comments = (Comment.query.filter_by(group_key="feed").order_by(Comment.createdAt.desc(), Comment.commentId.desc()).limit(11).all())
     items = []
+
     for comment in comments:
         gamerc: Gamer = Gamer.query.filter_by(id=comment.gamer_id).first()
         if gamerc:
@@ -107,8 +99,17 @@ def alt_login():
                 "type": "plain"
             })
 
-    nextCursor = hashlib.sha1(str(comments[-1].gamer_id).encode('utf-8')).hexdigest() if comments else None
-    master = get_master()
+    hasMore = len(comments) > 10
+    comments = comments[:10]
+    nextCursor = None   
+
+    if hasMore:
+        nextCursor = cursor_key.makeCursor({
+            "createdAt": comments[-1].createdAt,
+            "id": comments[-1].commentId
+        }, config.CURSOR_SECRET)
+
+    master = extensions.get_master()
 
     campaignComments = {}
     campaignids = [f"level_{data['id']}" for campaign in master["campaign"] for data in master["campaignlevel"][campaign]]
@@ -172,29 +173,24 @@ def alt_login():
     }) 
 
 @auth.route("/login", methods=["POST"])
+@wraps.crc_required
 def login():
     json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = jsonToCrc(sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400  
-    
     _, token = request.headers["authorization"].split(":")
 
     search = Gamer.query.filter_by(password=json["password"])
     gamer: Gamer = search.first()
     if not gamer:
+        print('password mismatch')
         return jsonify({'reason': "password_mismatch"}), 400
     
     searchId = Gamer.query.filter_by(id=int(json["id"])).first()
     if not searchId:
+        print("no search id")
         return jsonify({'reason': 'missing_gamer'}), 400
     
     if gamer and gamer.token == token:
+        print("alreayd logged in")
         return jsonify({'reason': 'already_loggedin'}), 400
 
     gamer.token = ''.join(random.choices(string.ascii_lowercase + string.ascii_uppercase + string.digits, k=32))
@@ -202,8 +198,7 @@ def login():
     gamer.country = request.headers.get('X-Vercel-Ip-Country', 'US')
     gamer.followerCount = len(Json.loads(gamer.follows)["followers"])
     cts = round(datetime.timestamp(datetime.now()))
-    loginBonus = 0
-    print(cts)
+
     if gamer.lastStreaklogin is None or gamer.lastStreaklogin == 0:
         gamer.lastStreaklogin = cts
     else:
@@ -211,18 +206,16 @@ def login():
         hoursPassed = secondsPassed / 3600
         #print(hoursPassed)
         if hoursPassed >= 24 and hoursPassed <= 48:
-            loginBonus = loginRewardAmount()
-            gamer.gem += loginRewardAmount()
+            gamer.gem += extensions.loginRewardAmount()
             gamer.lastStreaklogin = cts
         elif hoursPassed >= 48:
             gamer.lastStreaklogin = cts
 
     db.session.commit()
 
-    query = db.session.query(Comment).order_by(Comment.createdAt.desc())
-    comments = query.filter_by(group_key="feed").limit(10).all()
-        
+    comments = (Comment.query.filter_by(group_key="feed").order_by(Comment.createdAt.desc(), Comment.commentId.desc()).limit(11).all())
     items = []
+
     for comment in comments:
         gamerc: Gamer = Gamer.query.filter_by(id=comment.gamer_id).first()
         if gamerc:
@@ -262,8 +255,17 @@ def login():
                 "type": "plain"
             })
 
-    nextCursor = hashlib.sha1(str(comments[-1].gamer_id).encode('utf-8')).hexdigest() if comments else None
-    master = get_master()
+    hasMore = len(comments) > 10
+    comments = comments[:10]
+    nextCursor = None   
+
+    if hasMore:
+        nextCursor = cursor_key.makeCursor({
+            "createdAt": comments[-1].createdAt,
+            "id": comments[-1].commentId
+        }, config.CURSOR_SECRET)
+
+    master = extensions.get_master()
 
     campaignComments = {}
     campaignids = [f"level_{data['id']}" for campaign in master["campaign"] for data in master["campaignlevel"][campaign]]
@@ -275,7 +277,7 @@ def login():
     return jsonify({
         "success": True,
         "result": {
-            "loginBonus": loginBonus,
+            "loginBonus": extensions.loginRewardAmount(),
             "token": gamer.token,
         },        
         "updated": {
@@ -327,18 +329,9 @@ def login():
 
 @auth.route("/register", methods=["POST"])
 @limiter.limit("5/hour")
-def register():
-    json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = jsonToCrc(sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"register error: {e}")
-        return jsonify({}), 400
-    
-    master = get_master()
+@wraps.crc_required
+def register():    
+    master = extensions.get_master()
     if request.json["key"] != master["config"]["register_key"]:
         return jsonify({
             'success': False, 
@@ -352,10 +345,9 @@ def register():
     db.session.add(newGamer)
     db.session.commit()
 
-    query = db.session.query(Comment).order_by(Comment.createdAt.desc())
-    comments = query.filter_by(group_key="feed").limit(10).all()
-
+    comments = (Comment.query.filter_by(group_key="feed").order_by(Comment.createdAt.desc(), Comment.commentId.desc()).limit(11).all())
     items = []
+    
     for comment in comments:
         gamer: Gamer = Gamer.query.filter_by(id=comment.gamer_id).first()
         if gamer:     
@@ -396,8 +388,17 @@ def register():
                 "type": "plain"
             })
 
-    nextCursor = hashlib.sha1(str(comments[-1].gamer_id).encode('utf-8')).hexdigest() if comments else None
-    master = get_master()
+    hasMore = len(comments) > 10
+    comments = comments[:10]
+    nextCursor = None   
+
+    if hasMore:
+        nextCursor = cursor_key.makeCursor({
+            "createdAt": comments[-1].createdAt,
+            "id": comments[-1].commentId
+        }, config.CURSOR_SECRET)
+
+    master = extensions.get_master()
 
     campaignComments = {}
     campaignids = [f"level_{data['id']}" for campaign in master["campaign"] for data in master["campaignlevel"][campaign]]

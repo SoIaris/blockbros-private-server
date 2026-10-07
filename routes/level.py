@@ -1,5 +1,5 @@
-from flask import Blueprint, request, jsonify, render_template
-from app import db
+from flask import Blueprint, request, jsonify
+from app import db, limiter, config
 
 from models.gamer import Gamer
 from models.level import Level
@@ -8,8 +8,11 @@ from models.ranking import Ranking
 from models.video import Video
 from models.rating import Rating
 from models.play import Play
-from sqlalchemy import func
-from app import limiter
+from sqlalchemy import func, or_, and_, case, false
+
+from util import wraps
+from util import cursor as cursor_key
+from datetime import datetime
 
 import util.filter as filter
 import extensions
@@ -18,12 +21,7 @@ import hashlib
 import time
 import re
 
-from util import authentication as auth
-from datetime import datetime
-
 level = Blueprint("level", __name__)
-
-from app import limiter
 limiter.limit("300 per minute")(level)
 
 def LevelPostLimit():
@@ -39,92 +37,83 @@ def LevelPostLimit():
             return False
             
         return gamer.playerPt > 5000
-        
     except Exception as e:
         return False
     
 @level.route("/clear", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def clear():
     json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
 
     levelId = json.get("level_id")
-    time = json.get('time')
+    time = json.get("time")
     videoLoaded = json.get("video_loaded")
 
-    levelSearch: Level = Level.query.filter_by(id=levelId).first()
+    levelSearch: Level = Level.query.filter_by(id=levelId).with_for_update().first()
     if not levelSearch:
         return jsonify({
             "reason": "invalid_level"
         }), 400
-    
+
     firstClear = False
     ownRecord = False
 
-    ranking: Ranking = Ranking.query.filter_by(creator=gamer.id, levelId=levelSearch.id, cleared=False).order_by(Ranking.time.asc()).first()
+    ranking: Ranking = Ranking.query.filter_by(
+        creator=gamer.id, levelId=levelSearch.id, cleared=False
+    ).order_by(Ranking.time.asc(), Ranking.id.asc()).first()
+    previousClear = Ranking.query.filter_by(
+        creator=gamer.id, levelId=levelSearch.id, cleared=True
+    ).first() is not None
     difficulty = extensions.calculateDifficulty(levelSearch.uuCount, levelSearch.uuClearCount)
-    previousClear = Ranking.query.filter_by(creator=gamer.id, levelId=levelSearch.id,cleared=True).first() is not None
-    
+
     if ranking:
         if time < ranking.time:
             ranking.time = time
             ownRecord = True
     else:
         ranking = Ranking(time, levelSearch.id, gamer.id)
+        db.session.add(ranking)
         if not previousClear:
             firstClear = True
             gamer.playerPt += difficulty
             levelSearch.uuClearCount += 1
-        db.session.add(ranking)
 
     clearReward = {}
     videoStr = ""
     if firstClear:
         clearReward = extensions.getDifficultyReward(difficulty)
         inventory = Json.loads(gamer.inventory)
-        blocks = inventory["blocks"]
+        blocks = inventory.setdefault("blocks", {})
         if clearReward["type"] == "block":
-            if not str(clearReward['id']) in blocks:
-                blocks[str(clearReward['id'])] = clearReward["quantity"]
-            else:
-                blocks[str(clearReward['id'])] += clearReward["quantity"]
+            key = str(clearReward["id"])
+            blocks[key] = blocks.get(key, 0) + clearReward["quantity"]
         elif clearReward["type"] == "gem":
             videomodel: Video = Video(gamer.id, clearReward["quantity"])
-            videoStr = f"{videomodel.id}:{videomodel.token}"
             db.session.add(videomodel)
+            db.session.flush()
+            videoStr = f"{videomodel.id}:{videomodel.token}"
 
         gamer.inventory = Json.dumps(inventory)
 
-    subquery = db.session.query(
-        Ranking.creator,
-        func.min(Ranking.time).label('best_time')
+    db.session.flush()
+
+    betterPlayers = db.session.query(
+        func.count(func.distinct(Ranking.creator))
     ).filter(
         Ranking.levelId == levelSearch.id,
-        Ranking.cleared == False
-    ).group_by(
-        Ranking.creator
-    ).subquery()
+        Ranking.cleared == False,
+        Ranking.creator != gamer.id,
+        or_(
+            Ranking.time < ranking.time,
+            and_(Ranking.time == ranking.time, Ranking.id < ranking.id)
+        )
+    ).scalar() or 0
+    rank = betterPlayers + 1
 
-    better_players = db.session.query(
-        func.count(subquery.c.creator)
-    ).filter(
-        subquery.c.best_time < ranking.time
-    ).scalar()
     db.session.commit()
-    rank = None
-    if ranking:
-        rank = better_players + 1
 
     return jsonify({
        "success": True,
@@ -173,18 +162,10 @@ def clear():
     })
 
 @level.route("/get", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def get():
     json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     levelId = json.get("level_id")
     levelSearch: Level = Level.query.filter_by(levelId=levelId).first()
     if len(str(levelId)) == 16:
@@ -269,18 +250,10 @@ def get():
     })
 
 @level.route("/update", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def update():
     json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
 
@@ -433,18 +406,10 @@ def update():
     })
     
 @level.route("/delete", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def delete():
     json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
 
@@ -456,7 +421,7 @@ def delete():
             "reason": "invalid_level"
         }), 400
     
-    if levelSearch.creator != gamer.id:
+    if levelSearch.creator != gamer.id or gamer.adminLevel < 1:
         return jsonify({
             "reason": "forbidden"
         }), 400
@@ -480,7 +445,15 @@ def delete():
 
     gamer.inventory = Json.dumps(inventory)
 
+    master = extensions.get_master()
+    removed = sum(
+        reward["builderpt"] for reward in master["builderreward"]
+        if reward["tier"] <= levelSearch.tier
+    )
+   
+    gamer.builderPt = max(0, gamer.builderPt - removed)
     gamer.gem = gamer.gem - 1
+    
     db.session.delete(levelSearch)
     db.session.commit()
 
@@ -523,149 +496,231 @@ def delete():
     })
     
 @level.route("/list", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def list():
-    json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
-    id, token = request.headers["authorization"].split(":")
-    gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
-    type = json.get('type')
-    index = json.get('index')
-    cursor = json.get("cursor")
-
-    base_query = db.session.query(Level)
-
-    if type == "new" :
-        base_query = base_query.order_by(Level.createdAt.desc())
-    elif type == "activity":
-        base_query = base_query.order_by(Level.createdAt.desc())
-    elif type == "tag":
-        base_query = base_query.filter_by(tag=json.get("tag")).order_by(Level.createdAt.desc())
-    elif type == "own":
-        base_query = base_query.filter_by(creator=json.get("gamer_id")).order_by(Level.createdAt.desc())
-    elif type == "top":
-        subquery = db.session.query(Rating.levelid,func.sum(Rating.rating).label('total_rating')).filter(Rating.createdAt >= int(time.time()) - (int(time.time()) % 86400)).group_by(Rating.levelid).subquery()
-        base_query = base_query.join(subquery,Level.id == subquery.c.levelid).order_by(subquery.c.total_rating.desc())
-    elif type == "recent":
-        subquery = db.session.query(Play.levelid, func.max(Play.createdAt).label("latest")).filter(Play.gamer==gamer.id).group_by(Play.levelid).subquery()
-        base_query = base_query.join(subquery,Level.id == subquery.c.levelid).order_by(subquery.c.latest.desc())
-    elif type == "fav":
-        gamer = db.session.query(Gamer).filter_by(id=json.get("gamer_id")).first()
-        if gamer and gamer.favorites:
-            base_query = base_query.filter(Level.id.in_(gamer.favorites)).order_by(Level.createdAt.desc())
+    body = request.json
+    gamerId, token = request.headers["authorization"].split(":")
+    gamer: Gamer = Gamer.query.filter_by(id=gamerId, token=token).first()
+    listType = body.get("type", "new")
+    index = body.get("index", 0)
+    cursor = body.get("cursor")
+    pageSize = 10
+    dayAgo = int(time.time()) - 86400
+ 
+    query = db.session.query(Level)
+    sortColumn = None
+ 
+    if listType == "new":
+        sortColumn = Level.createdAt
+ 
+    if listType == "tag":
+        sortColumn = Level.createdAt
+        query = query.filter(Level.tag == body.get("tag"))
+ 
+    if listType == "own" or listType == "activity":
+        sortColumn = Level.createdAt
+        query = query.filter(Level.creator == body.get("gamer_id"))
+ 
+    if listType == "fav":
+        sortColumn = Level.createdAt
+        favoriteGamer = Gamer.query.filter_by(id=body.get("gamer_id")).first()
+        if favoriteGamer and favoriteGamer.favorites:
+            query = query.filter(Level.id.in_(favoriteGamer.favorites))
         else:
-            base_query = base_query.filter(False)
-    elif type == "activity":
-        ids = [id for id in gamer.follows['follows']]
-        if len(ids) == 0:
-            base_query = base_query.filter(False)
-        else:
-            base_query = base_query.filter(Level.creator.in_(ids)).order_by(Level.createdAt.desc())
-
+            query = query.filter(false())
+ 
+    #if listType == "activity":
+    #    ...
+ 
+    if listType == "top":
+        startOfDay = int(time.time()) - (int(time.time()) % 86400)
+        dayRatings = db.session.query(
+            Rating.levelid.label("ratedLevelId"),
+            func.sum(Rating.rating).label("total"),
+        ).filter(Rating.createdAt >= startOfDay).group_by(Rating.levelid).subquery()
+        sortColumn = dayRatings.c.total
+        query = query.join(dayRatings, Level.id == dayRatings.c.ratedLevelId)
+ 
+    if listType == "recent":
+        playTimes = db.session.query(
+            Play.levelid.label("playedLevelId"),
+            func.max(Play.createdAt).label("latest"),
+        ).filter(Play.gamer == gamer.id).group_by(Play.levelid).subquery()
+        sortColumn = playTimes.c.latest
+        query = query.join(playTimes, Level.id == playTimes.c.playedLevelId)
+ 
+    if sortColumn is None:
+        return jsonify({
+            "success": False,
+            "result": {},
+            "updated": {},
+            "timestamp": round(datetime.timestamp(datetime.now()))
+        })
+ 
+    query = query.add_columns(sortColumn.label("sortValue")).order_by(sortColumn.desc(), Level.id.desc())
+ 
     if cursor:
-        position = db.session.query(func.count(Level.id)).filter(
-            Level.createdAt >= db.session.query(Level.createdAt).filter(Level.id == int(cursor)).scalar_subquery()
-        ).scalar()
-        
-        pagination = base_query.paginate(page=(position // 10) + 1, per_page=10, error_out=False)
-    else:
-        pagination = base_query.paginate(page=1, per_page=10, error_out=False)
-
-    levels = pagination.items
-    items = []
-    for levelData in levels:
-        gamerc: Gamer = Gamer.query.filter_by(id=levelData.creator).first()
-        if gamerc:
-            ranking: Ranking = Ranking.query.filter_by(levelId=levelData.id, creator=gamer.id, cleared=False).first()
-            dayAgo = int(time.time()) - 86400
-            ratingToday: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == levelData.id,Rating.rating > 0, Rating.createdAt >= dayAgo).scalar() or 0
-            ratingYesterday: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == levelData.id,Rating.rating > 0, Rating.createdAt < dayAgo).scalar() or 0
-            ratingTotal: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == levelData.id,Rating.rating > 0).scalar() or 0
-            rating: Rating = Rating.query.filter_by(gamer=gamer.id,levelid=levelData.id).first()
-            items.append({
-                "clearCount": levelData.clearCount,
-                "clearVersion": 0,
-                "commentCount": Comment.query.filter_by(group_key=f"level_{levelData.id}").count(),
-                "commentedAt": 0,
-                "config": levelData.config,
-                "createdAt": levelData.createdAt,
-                "difficulty": extensions.calculateDifficulty(levelData.uuCount, levelData.uuClearCount),
-                "draft": 0,
-                "fav": True if gamer.favorites and str(levelData.id) in gamer.favorites else False,
-                "gamer": {
-                    "adminLevel": gamerc.adminLevel,
-                    "avatar": gamerc.avatar,
-                    "builderPt": gamerc.builderPt,
-                    "channel": gamerc.channel,
-                    "commentableAt": gamerc.commentableAt,
-                    "country": gamerc.country,
-                    "createdAt": gamerc.createdAt,
-                    "emblemCount": gamerc.emblemCount,
-                    "followerCount": gamerc.followerCount,
-                    "gamerId": gamerc.gamer_id,
-                    **({"homeLevel": gamerc.homeLevel} if gamerc.homeLevel is not None else {}),
-                    "id": gamerc.id,
-                    "inventory": Json.loads(gamerc.inventory),
-                    "lastLoginAt": gamerc.lastLoginAt,
-                    "levelCount": gamerc.levelCount,
-                    "nickname": gamerc.nickname,
-                    "playerPt": gamerc.playerPt,
-                    "userId": str(gamerc.gamer_id),
-                    "visibleAt": gamerc.visibleAt
-                },
-                "givenRating": -1,
-                "id": levelData.id,
-                "levelId": levelData.levelId,
-                "map": levelData.map,
-                "playCount": levelData.playCount,
-                "rating": ratingTotal,
-                "ratingCount": rating.rating if rating else 0,
-                "tag": levelData.tag,
-                "theme": levelData.theme,
-                "tier": levelData.tier if levelData.tier else 1,
-                "time": ranking.time if ranking else 0,
-                "title": levelData.title,
-                "todayRating": ratingToday,
-                "uuClearCount": levelData.uuClearCount,
-                "uuCount": levelData.uuCount,
-                "version": levelData.version,
-                "yesterdayRating": ratingYesterday
+        try:
+            decodedCursor = cursor_key.readCursor(cursor, config.CURSOR_SECRET)
+        except ValueError:
+            return jsonify({
+                "success": False,
+                "result": {},
+                "updated": {},
+                "timestamp": round(datetime.timestamp(datetime.now()))
             })
-            
+        
+        query = query.filter(or_(
+            sortColumn < decodedCursor["value"],
+            and_(sortColumn == decodedCursor["value"], Level.id < decodedCursor["id"])
+        ))
+ 
+    rows = query.limit(pageSize + 1).all()
+    hasMore = len(rows) > pageSize
+    rows = rows[:pageSize]
+    levels = [row[0] for row in rows]
+    nextCursor = None
+ 
+    if hasMore:
+        nextCursor = cursor_key.makeCursor({
+            "value": int(rows[-1][1]),
+            "id": rows[-1][0].id
+        }, config.CURSOR_SECRET)
+ 
+    levelIds = [levelData.id for levelData in levels]
+    creatorIds = {levelData.creator for levelData in levels}
+ 
+    creators = {}
+    rankings = {}
+    ratingSums = {}
+    myRatings = {}
+    commentCounts = {}
+ 
+    if levels:
+        creators = {
+            creator.id: creator
+            for creator in Gamer.query.filter(Gamer.id.in_(creatorIds)).all()
+        }
+ 
+        rankings = {
+            ranking.levelId: ranking
+            for ranking in Ranking.query.filter(
+                Ranking.levelId.in_(levelIds),
+                Ranking.creator == gamer.id,
+                Ranking.cleared == False
+            ).all()
+        }
+ 
+        ratingRows = db.session.query(
+            Rating.levelid,
+            func.coalesce(func.sum(case((Rating.createdAt >= dayAgo, Rating.rating), else_=0)), 0),
+            func.coalesce(func.sum(case((Rating.createdAt < dayAgo, Rating.rating), else_=0)), 0),
+            func.coalesce(func.sum(Rating.rating), 0),
+        ).filter(
+            Rating.levelid.in_(levelIds),
+            Rating.rating > 0
+        ).group_by(Rating.levelid).all()
+        ratingSums = {row[0]: (row[1], row[2], row[3]) for row in ratingRows}
+ 
+        myRatings = {
+            myRating.levelid: myRating
+            for myRating in Rating.query.filter(
+                Rating.gamer == gamer.id,
+                Rating.levelid.in_(levelIds)
+            ).all()
+        }
+ 
+        commentCounts = dict(
+            db.session.query(Comment.group_key, func.count(Comment.commentId))
+            .filter(Comment.group_key.in_([f"level_{levelId}" for levelId in levelIds]))
+            .group_by(Comment.group_key)
+            .all()
+        )
+ 
+    favorites = gamer.favorites or ""
+    inventories = {}
+    items = []
+ 
+    for levelData in levels:
+        creator = creators.get(levelData.creator)
+        if not creator:
+            continue
+ 
+        ranking = rankings.get(levelData.id)
+        myRating = myRatings.get(levelData.id)
+        ratingToday, ratingYesterday, ratingTotal = ratingSums.get(levelData.id, (0, 0, 0))
+ 
+        if creator.id not in inventories:
+            inventories[creator.id] = Json.loads(creator.inventory)
+ 
+        items.append({
+            "clearCount": levelData.clearCount,
+            "clearVersion": 0,
+            "commentCount": commentCounts.get(f"level_{levelData.id}", 0),
+            "commentedAt": 0,
+            "config": levelData.config,
+            "createdAt": levelData.createdAt,
+            "difficulty": extensions.calculateDifficulty(levelData.uuCount, levelData.uuClearCount),
+            "draft": 0,
+            "fav": str(levelData.id) in favorites,
+            "gamer": {
+                "adminLevel": creator.adminLevel,
+                "avatar": creator.avatar,
+                "builderPt": creator.builderPt,
+                "channel": creator.channel,
+                "commentableAt": creator.commentableAt,
+                "country": creator.country,
+                "createdAt": creator.createdAt,
+                "emblemCount": creator.emblemCount,
+                "followerCount": creator.followerCount,
+                "gamerId": creator.gamer_id,
+                **({"homeLevel": creator.homeLevel} if creator.homeLevel is not None else {}),
+                "id": creator.id,
+                "inventory": inventories[creator.id],
+                "lastLoginAt": creator.lastLoginAt,
+                "levelCount": creator.levelCount,
+                "nickname": creator.nickname,
+                "playerPt": creator.playerPt,
+                "userId": str(creator.gamer_id),
+                "visibleAt": creator.visibleAt
+            },
+            "givenRating": -1,
+            "id": levelData.id,
+            "levelId": levelData.levelId,
+            "map": levelData.map,
+            "playCount": levelData.playCount,
+            "rating": ratingTotal,
+            "ratingCount": myRating.rating if myRating else 0,
+            "tag": levelData.tag,
+            "theme": levelData.theme,
+            "tier": levelData.tier or 1,
+            "time": ranking.time if ranking else 0,
+            "title": levelData.title,
+            "todayRating": ratingToday,
+            "uuClearCount": levelData.uuClearCount,
+            "uuCount": levelData.uuCount,
+            "version": levelData.version,
+            "yesterdayRating": ratingYesterday
+        })
+ 
     return jsonify({
         "success": True,
         "result": {
-            'all_loaded': not pagination.has_next,
-            **({'cursor': str(levels[-1].id)} if pagination.has_next else {}),
-            "index": index + len(levels),
-            'items': items,
+            "all_loaded": not hasMore,
+            **({"cursor": nextCursor} if nextCursor is not None else {}),
+            "index": index + len(items),
+            "items": items,
         },
         "updated": {},
         "timestamp": round(datetime.timestamp(datetime.now()))
     })
 
 @level.route("/quickGet", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def quickget():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     id, token = request.headers["authorization"].split(":")
     ggamer: Gamer = Gamer.query.filter_by(id=id).first()
 
@@ -742,77 +797,99 @@ def quickget():
     })
 
 @level.route("/ranking/list", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def ranklist():
-    json = request.json
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
-    id, token = request.headers["authorization"].split(":")
-    
-    index = json.get("index")
-    levelid = json.get('level_id')
-    cursor = json.get("cursor")
-
-    query = db.session.query(Ranking).filter_by(levelId=levelid, cleared=False).order_by(Ranking.time.asc())
-
+    body = request.json
+    index = body.get("index", 0)
+    levelId = body.get("level_id")
+    cursor = body.get("cursor")
+    pageSize = 20
+ 
+    query = Ranking.query.filter_by(levelId=levelId, cleared=False).order_by(Ranking.time.asc(), Ranking.id.asc())
+ 
     if cursor:
-        cursor_id = int(hashlib.sha1(bytes(cursor, 'utf-8')).hexdigest(), 16)
-        query = query.filter(Ranking.id < cursor_id)
-
-    ranks = query.limit(20).all()
-
+        try:
+            decodedCursor = cursor_key.readCursor(cursor, config.CURSOR_SECRET)
+        except ValueError:
+            return jsonify({
+                "success": False,
+                "result": {},
+                "updated": {},
+                "timestamp": round(datetime.timestamp(datetime.now()))
+            })
+        
+        query = query.filter(or_(
+            Ranking.time > decodedCursor["time"],
+            and_(Ranking.time == decodedCursor["time"], Ranking.id > decodedCursor["id"])
+        ))
+ 
+    ranks = query.limit(pageSize + 1).all()
+    hasMore = len(ranks) > pageSize
+    ranks = ranks[:pageSize]
+    nextCursor = None
+ 
+    if hasMore:
+        nextCursor = cursor_key.makeCursor({
+            "time": ranks[-1].time,
+            "id": ranks[-1].id
+        }, config.CURSOR_SECRET)
+ 
+    gamers = {}
+    if ranks:
+        creatorIds = {rank.creator for rank in ranks}
+        gamers = {gamer.id: gamer for gamer in Gamer.query.filter(Gamer.id.in_(creatorIds)).all()}
+ 
+    inventories = {}
     items = []
+ 
     for rank in ranks:
-        gamer: Gamer = Gamer.query.filter_by(id=rank.creator).first()
+        gamer = gamers.get(rank.creator)
+ 
         if not gamer:
             items.append({
                 "gamer": extensions.deleted_user,
                 "levelId": rank.levelId,
                 "time": rank.time
             })
-        else:
-            items.append({
-                "gamer": {
-                    "adminLevel": gamer.adminLevel,
-                    "avatar": gamer.avatar,
-                    "builderPt": gamer.builderPt,
-                    "channel": gamer.channel,
-                    "commentableAt": gamer.commentableAt,
-                    "country": gamer.country,
-                    "createdAt": gamer.createdAt,
-                    "emblemCount": gamer.emblemCount,
-                    "followerCount": gamer.followerCount,
-                    "gamerId": gamer.gamer_id,
-                    **({"homeLevel": gamer.homeLevel} if gamer.homeLevel is not None else {}),
-                    "id": gamer.id,
-                    "inventory": Json.loads(gamer.inventory),
-                    "lastLoginAt": gamer.lastLoginAt,
-                    "levelCount": gamer.levelCount,
-                    "nickname": gamer.nickname,
-                    "playerPt": gamer.playerPt,
-                    "userId": str(gamer.gamer_id),
-                    "visibleAt": gamer.visibleAt
-                },
-                "levelId": rank.levelId,
-                "time": rank.time
-            })
-
-    nextCursor = hashlib.sha1(str(ranks[-1].id).encode('utf-8')).hexdigest() if ranks else None
-
+            continue
+ 
+        if gamer.id not in inventories:
+            inventories[gamer.id] = Json.loads(gamer.inventory)
+ 
+        items.append({
+            "gamer": {
+                "adminLevel": gamer.adminLevel,
+                "avatar": gamer.avatar,
+                "builderPt": gamer.builderPt,
+                "channel": gamer.channel,
+                "commentableAt": gamer.commentableAt,
+                "country": gamer.country,
+                "createdAt": gamer.createdAt,
+                "emblemCount": gamer.emblemCount,
+                "followerCount": gamer.followerCount,
+                "gamerId": gamer.gamer_id,
+                **({"homeLevel": gamer.homeLevel} if gamer.homeLevel is not None else {}),
+                "id": gamer.id,
+                "inventory": inventories[gamer.id],
+                "lastLoginAt": gamer.lastLoginAt,
+                "levelCount": gamer.levelCount,
+                "nickname": gamer.nickname,
+                "playerPt": gamer.playerPt,
+                "userId": str(gamer.gamer_id),
+                "visibleAt": gamer.visibleAt
+            },
+            "levelId": rank.levelId,
+            "time": rank.time
+        })
+ 
     return jsonify({
         "success": True,
         "result": {
-            'all_loaded': len(ranks) < 20,
-            'cursor': nextCursor,
-            "index": len(ranks),
-            'items': items,
+            "all_loaded": not hasMore,
+            **({"cursor": nextCursor} if nextCursor is not None else {}),
+            "index": index + len(items),
+            "items": items,
         },
         "updated": {},
         "timestamp": round(datetime.timestamp(datetime.now()))
@@ -820,19 +897,10 @@ def ranklist():
 
 @level.route("/post", methods=["POST"])
 @limiter.limit("5/day", exempt_when=lambda: LevelPostLimit())
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def post():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id).first()
 

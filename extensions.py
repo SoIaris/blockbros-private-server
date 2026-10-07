@@ -126,11 +126,3 @@ def loginRewardAmount():
 
 def sortStringify(obj, indent=None):
     return json.dumps(obj, sort_keys=True, separators=(',', ':'))
-
-def jsonToCrc(table: str, token: str):
-    string = table
-    if token != "undefined":
-        string += token
-
-    crc = hashlib.md5((string).encode()).hexdigest()
-    return crc

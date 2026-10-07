@@ -1,34 +1,22 @@
 from flask import Blueprint, request, jsonify
+from app import db, limiter
 
 from models.gamer import Gamer
-from app import db
 
 from datetime import datetime
-import extensions
-from util import authentication as auth
+from util import wraps
 
+import extensions
 import json as Json
 
 shop = Blueprint("shop", __name__)
-from app import limiter
 limiter.limit("300 per minute")(shop)
 
-# 400
-# {'reason': 'validation_exception'}
 @shop.route("/item/buy", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def buy():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id).first()
 
@@ -95,19 +83,10 @@ def buy():
         })
     
 @shop.route("/transaction/finish", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def transactionfinish():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id).first()
 
@@ -156,19 +135,10 @@ def transactionfinish():
     })
 
 @shop.route("/transaction/start", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def transactionstart():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id).first()
     gamer.hasUnfinishedIAP = True
@@ -212,19 +182,10 @@ def transactionstart():
     })
     
 @shop.route("/gacha/character/spin", methods=["POST"])
-@auth.check_auth
+@wraps.auth_required
+@wraps.crc_required
 def spin():
     json = request.json
-
-    try:
-        _, token = request.headers["authorization"].split(":")
-        crc = extensions.jsonToCrc(extensions.sortStringify(json), token)
-        if crc != request.headers["Crc"]:
-            return jsonify({}), 400
-    except Exception as e:
-        print(f"login error: {e}")
-        return jsonify({}), 400 
-    
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id).first()
     
@@ -237,7 +198,6 @@ def spin():
                 'reason': 'validation_exception'
             }), 400
         
-        print(gamer.inventory)
         inventory = Json.loads(gamer.inventory)
         characterId = extensions.randomAvatar()
         gamer.gem -= master["config"]["character_gacha_price"]
@@ -288,10 +248,3 @@ def spin():
         return jsonify({
             'reason': 'validation_exception'
         }), 400
-    
-    return jsonify({
-        "success": False,
-        "result": {},
-        "updated": {},
-        "timestamp": datetime.timestamp(datetime.now())
-    })
