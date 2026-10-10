@@ -38,18 +38,26 @@ def follow():
     follows = Json.loads(gamer.follows)
     targetfollows = Json.loads(targetGamer.follows)
 
-    if action == "follow" and targetGamer.id not in follows["follows"] and gamer.id not in targetfollows["follows"]:
-        follows["follows"].append(targetGamer.id)
-        targetfollows["followers"].append(gamer.id)
-    elif action == "unfollow":
-        follows["follows"].remove(targetGamer.id)
-        targetfollows["followers"].remove(gamer.id)
-    elif action == "block" and targetGamer.id not in follows["blocked"]:
-        follows["blocked"].append(targetGamer.id)
-        targetfollows["blocks"].append(gamer.id)
-    elif action == "unblock":
-        follows["blocked"].remove(targetGamer.id)
-        targetfollows["blocks"].remove(gamer.id)
+    try:
+        if action == "follow" and targetGamer.id not in follows["follows"] and gamer.id not in targetfollows["follows"]:
+            follows["follows"].append(targetGamer.id)
+            targetfollows["followers"].append(gamer.id)
+        elif action == "unfollow":
+            follows["follows"].remove(targetGamer.id)
+            targetfollows["followers"].remove(gamer.id)
+        elif action == "block" and targetGamer.id not in follows["blocked"]:
+            follows["blocked"].append(targetGamer.id)
+            targetfollows["blocks"].append(gamer.id)
+        elif action == "unblock":
+            follows["blocked"].remove(targetGamer.id)
+            targetfollows["blocks"].remove(gamer.id)
+    except Exception:
+        return jsonify({
+            "success": False,
+            "result": {},
+            "updated": {},
+            "timestamp": round(datetime.timestamp(datetime.now()))
+        })
 
     gamer.follows = Json.dumps(follows)
     targetGamer.follows = Json.dumps(targetfollows)
@@ -190,7 +198,6 @@ def claimgift():
 
     gifts = gamer.gifts
     index = json.get("index")
-    print(index, gifts)
 
     if not gifts[index]:
         return jsonify({
@@ -199,10 +206,6 @@ def claimgift():
             "updated": {},
             "timestamp": round(datetime.timestamp(datetime.now()))
         })
-    
-        
-    # {'builderPt': 0, 'desc': 'reward_desc_happynewyear', 'params': {}, 'productId': 0, 'productType': 'gem', 'quantity': 500, 'senderId': 0, 'title': 'reward_title_happynewyear'}, 
-    print(gifts[index])
 
     if gifts[index]["productType"] == "emblem":
         emblem: Emblem = Emblem.query.filter_by(id=gifts[index]["productId"]).first()

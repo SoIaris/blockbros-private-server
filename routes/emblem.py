@@ -1,11 +1,12 @@
 from flask import Blueprint, request, jsonify
-from app import db, limiter
+from app import db, limiter, config
 
 from models.emblem import Emblem
 from models.gamer import Gamer
 
 from datetime import datetime
 from util import wraps, filter
+from util import cursor as cursor_key
 
 import json as Json
 import extensions
@@ -207,31 +208,65 @@ def delete():
 @wraps.auth_required
 @wraps.crc_required
 def list():
-    json = request.json
-    cursor = json.get("cursor")
-    gamerId = json.get("gamer_id")
-    index = json.get("index")
+    body = request.json
+    cursor = body.get("cursor")
+    gamerId = body.get("gamer_id")
+    index = body.get("index") or 0
+    pageSize = 10
 
-    query = db.session.query(Emblem)
-    
+    lastId = None
     if cursor:
-        id = int(hashlib.sha1(bytes(cursor, 'utf-8')).hexdigest(), 16)
-        query = query.filter(Emblem.id < id)
-
-    emblems = query.limit(10).all()
-    ownsemblems = [emblem for emblem in emblems if gamerId in emblem.owners]
-
-    items = []
-    for emblem in ownsemblems:
-        creator: Gamer = Gamer.query.filter_by(id=emblem.creator).first()
-        if not creator:
+        try:
+            decodedCursor = cursor_key.readCursor(cursor, config.CURSOR_SECRET)
+        except ValueError:
             return jsonify({
                 "success": False,
                 "result": {},
                 "updated": {},
                 "timestamp": round(datetime.timestamp(datetime.now()))
             })
-    
+        
+        lastId = decodedCursor["id"]
+
+    owned = []
+    while len(owned) <= pageSize:
+        query = db.session.query(Emblem).order_by(Emblem.id.desc())
+        if lastId is not None:
+            query = query.filter(Emblem.id < lastId)
+
+        batch = query.limit(100).all()
+        if not batch:
+            break
+
+        for emblem in batch:
+            lastId = emblem.id
+            if gamerId in emblem.owners:
+                owned.append(emblem)
+                if len(owned) > pageSize:
+                    break
+
+        if len(batch) < 100:
+            break
+
+    hasMore = len(owned) > pageSize
+    page = owned[:pageSize]
+    nextCursor = None
+
+    if hasMore:
+        nextCursor = cursor_key.makeCursor({
+            "id": page[-1].id
+        }, config.CURSOR_SECRET)
+
+    creators = {}
+    items = []
+    for emblem in page:
+        if emblem.creator not in creators:
+            creators[emblem.creator] = Gamer.query.filter_by(id=emblem.creator).first()
+
+        creator: Gamer = creators[emblem.creator]
+        if not creator:
+            continue
+
         items.append({
             "createdAt": emblem.createdAt,
             "creator": {
@@ -270,16 +305,14 @@ def list():
             "title": emblem.title
         })
 
-    nextCursor = hashlib.sha1(str(emblems[-1].id).encode('utf-8')).hexdigest() if emblems else None
-
     return jsonify({
-        "result": {
-            'all_loaded': len(emblems) < 10,
-            'cursor': nextCursor,
-            "index": len(emblems),
-            'items': items,
-        },
         "success": True,
+        "result": {
+            "all_loaded": not hasMore,
+            **({"cursor": nextCursor} if nextCursor is not None else {}),
+            "index": index + len(items),
+            "items": items,
+        },
         "updated": {},
         "timestamp": round(datetime.timestamp(datetime.now()))
     })
@@ -581,24 +614,17 @@ def get():
 @wraps.crc_required
 def post():
     json = request.json
-    
-    cursor = json.get("cursor")
-    index = json.get("index")
     id, token = request.headers["authorization"].split(":")
 
-    query = db.session.query(Emblem).order_by(Emblem.createdAt.desc())
-    gamer: Gamer = Gamer.query.filter_by(id=id).first()
+    cursor = json.get("cursor")
+    index = json.get("index")
+    pageSize = 10
 
+    query = db.session.query(Emblem).filter_by(creator=id).order_by(Emblem.createdAt.desc())
     if cursor:
-        emblemid = int(hashlib.sha1(bytes(cursor, 'utf-8')).hexdigest(), 16)
-        query = query.filter(Emblem.id < emblemid)
-
-    emblems = query.filter_by(creator=gamer.id).limit(10).all()
-
-    items = []
-    for emblem in emblems:
-        emblem: Emblem = Emblem.query.filter_by(id=emblem.id).first()
-        if not emblem:
+        try:
+            decodedCursor = cursor_key.readCursor(cursor, config.CURSOR_SECRET)
+        except ValueError:
             return jsonify({
                 "success": False,
                 "result": {},
@@ -606,6 +632,20 @@ def post():
                 "timestamp": round(datetime.timestamp(datetime.now()))
             })
         
+        query = query.filter(Emblem.id < decodedCursor["id"])
+    
+    rows = query.limit(pageSize + 1).all()
+    hasMore = len(rows) > pageSize
+    emblems = rows[:pageSize]
+    nextCursor = None
+    if hasMore:
+        nextCursor = cursor_key.makeCursor({
+            "id": emblems[-1].id
+        }, config.CURSOR_SECRET)
+        
+    items = []
+
+    for emblem in emblems:
         items.append({
             'desc': emblem.desc, 
             'id': emblem.id, 
@@ -615,13 +655,11 @@ def post():
             'title': emblem.title
         })
 
-    nextCursor = hashlib.sha1(str(emblems[-1].id).encode('utf-8')).hexdigest() if emblems else None
-
     return jsonify({
         "result": {
-            'all_loaded': len(emblems) < 10,
-            'cursor': nextCursor,
-            "index": len(emblems),
+            'all_loaded': not hasMore,
+            **({"cursor": nextCursor} if nextCursor is not None else {}),
+            'index': len(items) + index,
             'items': items,
         },
         "success": True,

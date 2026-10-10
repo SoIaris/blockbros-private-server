@@ -47,7 +47,6 @@ def alt_login():
     else:
         secondsPassed = cts - gamer.lastStreaklogin
         hoursPassed = secondsPassed / 3600
-        print(hoursPassed)
         if hoursPassed >= 24 and hoursPassed <= 48:
             loginBonus = extensions.loginRewardAmount()
             gamer.gem += extensions.loginRewardAmount()
