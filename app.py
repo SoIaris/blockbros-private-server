@@ -99,15 +99,11 @@ def create_app():
             return jsonify({}), 400 
 
         imageUrl = url_for(f"generate_level_image", level_id=level.levelId, _external=True)
-
-        return render_template("level/index.html", level={
-            "imageUrl": imageUrl,
-            "level": level,
-        }, gamer=creator)
+        return render_template("level/index.html", level=level, gamer=creator, imageUrl=imageUrl)
 
     @app.route("/levels/<int:level_id>/thumbnail") # temp route until we can save level images
     def generate_level_image(level_id):
-        level: Level = Level.query.filter_by(levelId=level_id+10_000).first()
+        level: Level = Level.query.filter_by(levelId=level_id).first()
         if not level:
             return jsonify({}), 400
         
