@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template, send_file
+from flask import Flask, jsonify, request, render_template, send_file, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
@@ -87,6 +87,23 @@ def create_app():
     @app.route("/")
     def home():
         return render_template("home/index.html")
+    
+    @app.route("/levels/<int:level_id>/", methods=["GET"])
+    def display_level(level_id):
+        level: Level = Level.query.filter_by(levelId=level_id+10_000).first()
+        if not level:
+            return jsonify({}), 400 
+
+        creator: Gamer = Gamer.query.filter_by(id=level.creator).first()
+        if not creator:
+            return jsonify({}), 400 
+
+        imageUrl = url_for(f"generate_level_image", level_id=level.levelId, _external=True)
+
+        return render_template("level/index.html", level={
+            "imageUrl": imageUrl,
+            "level": level,
+        }, gamer=creator)
 
     @app.route("/levels/<int:level_id>/thumbnail") # temp route until we can save level images
     def generate_level_image(level_id):
