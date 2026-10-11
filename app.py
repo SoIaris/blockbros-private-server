@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
@@ -22,9 +22,12 @@ from models.emblem import Emblem
 from models.level import Level
 from models.play import Play
 
+from util.level_image import generateThumbnail
+
 import extensions
 import requests
 import os
+import io
 
 '''
     TODO:
@@ -84,6 +87,20 @@ def create_app():
     @app.route("/")
     def home():
         return render_template("home/index.html")
+
+    @app.route("/levels/<int:level_id>/thumbnail") # temp route until we can save level images
+    def generate_level_image(level_id):
+        level: Level = Level.query.filter_by(levelId=level_id+10_000).first()
+        if not level:
+            return jsonify({}), 400
+        
+        thumbnail = generateThumbnail(level.map, level.theme)
+
+        buf = io.BytesIO()
+        thumbnail.save(buf, format="PNG")
+        buf.seek(0)
+
+        return send_file(buf, mimetype="image/png")
     
     # handlers
     @app.after_request
