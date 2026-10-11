@@ -248,7 +248,7 @@ def get():
         'success': True, 
         'result': {
             'all_loaded': True, 
-            'index': len(items) + index, 
+            'index': len(items), 
             'items': items
         },
         "updated": {},
