@@ -26,6 +26,13 @@ import extensions
 import requests
 import os
 
+'''
+    TODO:
+        level/list activity type
+        campaign clearing
+        make banned gamers not show
+'''
+
 class config:
     SQLALCHEMY_DATABASE_URI = os.getenv("POSTGRES_URL") # PostgresSQL
     VPNAPI_KEY = os.getenv("VPNAPI_KEY") # https://vpnapi.io/

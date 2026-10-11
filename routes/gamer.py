@@ -421,9 +421,17 @@ def sync():
 
     batch = json.get("batch")
 
-    query = db.session.query(Comment).order_by(Comment.createdAt.desc())
-    comments = query.filter_by(group_key="feed").limit(10).all()
+    comments = (Comment.query.filter_by(group_key="feed").order_by(Comment.createdAt.desc(), Comment.commentId.desc()).limit(11).all())
+    hasMore = len(comments) > 10
+    comments = comments[:10]
+    nextCursor = None   
 
+    if hasMore:
+        nextCursor = cursor_key.makeCursor({
+            "createdAt": comments[-1].createdAt,
+            "id": comments[-1].commentId
+        }, config.CURSOR_SECRET)
+        
     items = []
     for comment in comments:
         gamerc: Gamer = Gamer.query.filter_by(id=comment.gamer_id).first()
@@ -463,8 +471,6 @@ def sync():
             "message": comment.message,
             "type": "plain"
         })
-
-    nextCursor = hashlib.sha1(str(comments[-1].gamer_id).encode('utf-8')).hexdigest() if comments else None
 
     return jsonify({
         "success": True,
