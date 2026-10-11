@@ -415,7 +415,7 @@ def post_emblem():
     id, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=id).first()
 
-    emblem = Emblem(filter.filterText(json.get("title")), filter.filterText(json.get("title")), json["map"], gamer.id)
+    emblem = Emblem(filter.filterText(json.get("title")), filter.filterText(json.get("desc")), json["map"], gamer.id)
     
     map = json.get("map")
     inventory = Json.loads(gamer.inventory)

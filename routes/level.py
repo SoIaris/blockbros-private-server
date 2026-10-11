@@ -166,7 +166,10 @@ def clear():
 @wraps.crc_required
 def get():
     json = request.json
+    gamerid, token = request.headers["authorization"].split(":")
+
     levelId = json.get("level_id")
+
     levelSearch: Level = Level.query.filter_by(levelId=levelId).first()
     if len(str(levelId)) == 16:
         levelSearch: Level = Level.query.filter_by(id=levelId).first()
@@ -179,11 +182,14 @@ def get():
             "timestamp": round(datetime.timestamp(datetime.now()))
         })
     
-    gamer: Gamer = Gamer.query.filter_by(id=levelSearch.creator).first()
+    creator: Gamer = Gamer.query.filter_by(id=levelSearch.creator).first()
+    gamer: Gamer = Gamer.query.filter_by(id=gamerid).first()
+
     dayAgo = int(time.time()) - 86400
     ratingToday: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == levelSearch.id,Rating.rating > 0, Rating.createdAt >= dayAgo).scalar() or 0
     ratingYesterday: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == levelSearch.id,Rating.rating > 0, Rating.createdAt < dayAgo).scalar() or 0
     ratingTotal: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == levelSearch.id,Rating.rating > 0).scalar() or 0
+    
     rating: Rating = Rating.query.filter_by(gamer=gamer.id,levelid=levelSearch.id).first()
     ranking: Ranking = Ranking.query.filter_by(creator=gamer.id,levelId=levelSearch.id).first()
 
@@ -199,37 +205,37 @@ def get():
         "draft": 0,
         "fav": True if gamer.favorites and str(levelSearch.id) in gamer.favorites else False,
         "gamer": {
-            "adminLevel": gamer.adminLevel,
-            "avatar": gamer.avatar,
-            "builderPt": gamer.builderPt,
-            "channel": gamer.channel,
-            "commentableAt": gamer.commentableAt,
-            "country": gamer.country,
-            "createdAt": gamer.createdAt,
-            "emblemCount": gamer.emblemCount,
-            "followerCount": gamer.followerCount,
-            "gamerId": gamer.gamer_id,
-            **({"homeLevel": gamer.homeLevel} if gamer.homeLevel is not None else {}),
-            "id": gamer.id,
-            "inventory": Json.loads(gamer.inventory),
-            "lastLoginAt": gamer.lastLoginAt,
-            "levelCount": gamer.levelCount,
-            "nickname": gamer.nickname,
-            "playerPt": gamer.playerPt,
-            "userId": str(gamer.gamer_id),
-            "visibleAt": gamer.visibleAt
+            "adminLevel": creator.adminLevel,
+            "avatar": creator.avatar,
+            "builderPt": creator.builderPt,
+            "channel": creator.channel,
+            "commentableAt": creator.commentableAt,
+            "country": creator.country,
+            "createdAt": creator.createdAt,
+            "emblemCount": creator.emblemCount,
+            "followerCount": creator.followerCount,
+            "gamerId": creator.gamer_id,
+            **({"homeLevel": creator.homeLevel} if creator.homeLevel is not None else {}),
+            "id": creator.id,
+            "inventory": Json.loads(creator.inventory),
+            "lastLoginAt": creator.lastLoginAt,
+            "levelCount": creator.levelCount,
+            "nickname": creator.nickname,
+            "playerPt": creator.playerPt,
+            "userId": str(creator.gamer_id),
+            "visibleAt": creator.visibleAt
         },
         "givenRating": -1,
         "id": levelSearch.id,
         "levelId": levelSearch.levelId,
         "map": levelSearch.map,
         "playCount": levelSearch.playCount,
-        "rating": ratingTotal,
-        "ratingCount": rating,
+        "rating": rating,
+        "ratingCount": ratingTotal,
         "tag": levelSearch.tag,
         "theme": levelSearch.theme,
         "tier": levelSearch.tier if levelSearch.tier else 1,
-        "time": ranking.time if ranking.time else 0,
+        "time": ranking.time if ranking else 0,
         "title": levelSearch.title,
         "todayRating": ratingToday,
         "uuClearCount": levelSearch.uuClearCount,
@@ -242,7 +248,7 @@ def get():
         'success': True, 
         'result': {
             'all_loaded': True, 
-            'index': len(items), 
+            'index': len(items) + index, 
             'items': items
         },
         "updated": {},
