@@ -728,12 +728,13 @@ def list():
 def quickget():
     json = request.json
     id, token = request.headers["authorization"].split(":")
-    ggamer: Gamer = Gamer.query.filter_by(id=id).first()
 
     items = []
     randomlevel: Level = Level.query.order_by(func.random()).first()
     if randomlevel:
-        gamer: Gamer = Gamer.query.filter_by(id=randomlevel.creator).first()
+        gamer: Gamer = Gamer.query.filter_by(id=id).first()
+        creator: Gamer = Gamer.query.filter_by(id=randomlevel.creator).first()
+
         dayAgo = int(time.time()) - 86400
         ratingToday: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == randomlevel.id,Rating.rating > 0, Rating.createdAt >= dayAgo).scalar() or 0
         ratingYesterday: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == randomlevel.id,Rating.rating > 0, Rating.createdAt < dayAgo).scalar() or 0
@@ -750,27 +751,27 @@ def quickget():
             "createdAt": randomlevel.createdAt,
             "difficulty": extensions.calculateDifficulty(randomlevel.uuCount, randomlevel.uuClearCount),
             "draft": 0,
-            "fav": True if ggamer.favorites and str(randomlevel.id) in ggamer.favorites else False,
+            "fav": True if gamer.favorites and str(randomlevel.id) in gamer.favorites else False,
             "gamer": {
-                "adminLevel": gamer.adminLevel,
-                "avatar": gamer.avatar,
-                "builderPt": gamer.builderPt,
-                "channel": gamer.channel,
-                "commentableAt": gamer.commentableAt,
-                "country": gamer.country,
-                "createdAt": gamer.createdAt,
-                "emblemCount": gamer.emblemCount,
-                "followerCount": gamer.followerCount,
-                "gamerId": gamer.gamer_id,
-                **({"homeLevel": gamer.homeLevel} if gamer.homeLevel is not None else {}),
-                "id": gamer.id,
-                "inventory": Json.loads(gamer.inventory),
-                "lastLoginAt": gamer.lastLoginAt,
-                "levelCount": gamer.levelCount,
-                "nickname": gamer.nickname,
-                "playerPt": gamer.playerPt,
-                "userId": str(gamer.gamer_id),
-                "visibleAt": gamer.visibleAt
+                "adminLevel": creator.adminLevel,
+                "avatar": creator.avatar,
+                "builderPt": creator.builderPt,
+                "channel": creator.channel,
+                "commentableAt": creator.commentableAt,
+                "country": creator.country,
+                "createdAt": creator.createdAt,
+                "emblemCount": creator.emblemCount,
+                "followerCount": creator.followerCount,
+                "gamerId": creator.gamer_id,
+                **({"homeLevel": creator.homeLevel} if creator.homeLevel is not None else {}),
+                "id": creator.id,
+                "inventory": Json.loads(creator.inventory),
+                "lastLoginAt": creator.lastLoginAt,
+                "levelCount": creator.levelCount,
+                "nickname": creator.nickname,
+                "playerPt": creator.playerPt,
+                "userId": str(creator.gamer_id),
+                "visibleAt": creator.visibleAt
             },
             "givenRating": -1,
             "id": randomlevel.id,
@@ -782,7 +783,7 @@ def quickget():
             "tag": randomlevel.tag,
             "theme": randomlevel.theme,
             "tier": randomlevel.tier if randomlevel.tier else 1,
-            "time": ranking.time if ranking.time else 0,
+            "time": ranking.time if ranking else 0,
             "title": randomlevel.title,
             "todayRating": ratingToday,
             "uuClearCount": randomlevel.uuClearCount,

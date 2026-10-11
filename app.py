@@ -32,7 +32,7 @@ import io
 '''
     TODO:
         level/list activity type
-        campaign clearing
+        campaign record leaderboard
         make banned gamers not show
 '''
 
@@ -88,19 +88,6 @@ def create_app():
     def home():
         return render_template("home/index.html")
     
-    @app.route("/levels/<int:level_id>/", methods=["GET"])
-    def display_level(level_id):
-        level: Level = Level.query.filter_by(levelId=level_id+10_000).first()
-        if not level:
-            return jsonify({}), 400 
-
-        creator: Gamer = Gamer.query.filter_by(id=level.creator).first()
-        if not creator:
-            return jsonify({}), 400 
-
-        imageUrl = url_for(f"generate_level_image", level_id=level.levelId, _external=True)
-        return render_template("level/index.html", level=level, gamer=creator, imageUrl=imageUrl)
-
     @app.route("/levels/<int:level_id>/thumbnail") # temp route until we can save level images
     def generate_level_image(level_id):
         level: Level = Level.query.filter_by(levelId=level_id).first()
