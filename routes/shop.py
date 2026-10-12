@@ -192,59 +192,65 @@ def spin():
     type = json.get("type")
     master = extensions.get_master()
     
-    if type == 0:
-        if not gamer.gem >= master["config"]["character_gacha_price"]:
-            return jsonify({
-                'reason': 'validation_exception'
-            }), 400
-        
-        inventory = Json.loads(gamer.inventory)
-        characterId = extensions.randomAvatar()
-        gamer.gem -= master["config"]["character_gacha_price"]
-
-        inventory["avatars"].append(characterId["id"])
-
-        gamer.inventory = Json.dumps(inventory)
-        db.session.commit()
-
+    if not gamer.gem >= master["config"]["character_gacha_price"]:
         return jsonify({
-            "success": True,
-            "result": {
-                "avatarId": characterId["id"]
-            },
-            "updated": {
-                "gamer": {
-                    "adminLevel": gamer.adminLevel,
-                    "avatar": gamer.avatar,
-                    "builderPt": gamer.builderPt,
-                    "campaigns": gamer.campaigns,
-                    "channel": gamer.channel,
-                    "clearCount": gamer.clearCount,
-                    "commentableAt": gamer.commentableAt,
-                    "country": gamer.country,
-                    "createdAt": gamer.createdAt,
-                    "emblemCount": gamer.emblemCount,
-                    "followerCount": gamer.followerCount,
-                    "gamerId": gamer.gamer_id,
-                    "gem": gamer.gem,
-                    "hasUnfinishedIAP": gamer.hasUnfinishedIAP,
-                    "id": gamer.id,
-                    "inventory": Json.loads(gamer.inventory),
-                    "lang": gamer.lang,
-                    **({"homeLevel": gamer.homeLevel} if gamer.homeLevel is not None else {}),
-                    "lastLoginAt": gamer.lastLoginAt,
-                    "levelCount": gamer.levelCount,
-                    "maxVideoId": gamer.maxVideoId,
-                    "nameVersion": gamer.nameVersion,
-                    "nickname": gamer.nickname,
-                    "playerPt": gamer.playerPt,
-                    "researches": gamer.researches,
-                    "visibleAt": gamer.visibleAt
-                }
-            },
-            "timestamp": round(datetime.timestamp(datetime.now()))
-        })
+            'reason': 'validation_exception'
+        }), 400
+    
+
+    characterId = 1
+    if type == 0:
+        characterId = extensions.randomAvatar()
+    elif type == extensions.getActiveEventGachaId():
+        characterId = extensions.getActiveEventGachaId()
     else:
         return jsonify({
             'reason': 'validation_exception'
         }), 400
+    
+    gamer.gem -= master["config"]["character_gacha_price"]
+    inventory = Json.loads(gamer.inventory)
+    
+    if characterId not in inventory["avatars"]:
+        inventory["avatars"].append(characterId)
+        gamer.inventory = Json.dumps(inventory)
+
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "result": {
+            "avatarId": characterId
+        },
+        "updated": {
+            "gamer": {
+                "adminLevel": gamer.adminLevel,
+                "avatar": gamer.avatar,
+                "builderPt": gamer.builderPt,
+                "campaigns": gamer.campaigns,
+                "channel": gamer.channel,
+                "clearCount": gamer.clearCount,
+                "commentableAt": gamer.commentableAt,
+                "country": gamer.country,
+                "createdAt": gamer.createdAt,
+                "emblemCount": gamer.emblemCount,
+                "followerCount": gamer.followerCount,
+                "gamerId": gamer.gamer_id,
+                "gem": gamer.gem,
+                "hasUnfinishedIAP": gamer.hasUnfinishedIAP,
+                "id": gamer.id,
+                "inventory": Json.loads(gamer.inventory),
+                "lang": gamer.lang,
+                **({"homeLevel": gamer.homeLevel} if gamer.homeLevel is not None else {}),
+                "lastLoginAt": gamer.lastLoginAt,
+                "levelCount": gamer.levelCount,
+                "maxVideoId": gamer.maxVideoId,
+                "nameVersion": gamer.nameVersion,
+                "nickname": gamer.nickname,
+                "playerPt": gamer.playerPt,
+                "researches": gamer.researches,
+                "visibleAt": gamer.visibleAt
+            }
+        },
+        "timestamp": round(datetime.timestamp(datetime.now()))
+    })

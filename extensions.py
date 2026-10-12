@@ -29,7 +29,7 @@ deleted_user = {
 
 # made this a function so it gets a updated master if changed without restarting the api
 def get_master():
-    with open("master.json", 'r') as file:
+    with open("master.json", 'r', encoding="utf-8") as file:
         master = json.load(file)
 
         return master
@@ -88,6 +88,47 @@ def decodeBlock(value):
         "dirType": value & int("1111", 2),
     }
 
+def getGacha(gachaid):
+    return get_master()["avatar"][gachaid]
+
+def getActiveEventsByType(type):
+    events = []
+
+    master = get_master()["event"]
+    for event in master:
+        if event["type"] == type:
+            startat = event["startat"]
+            endat = event["endat"]
+            now = round(datetime.timestamp(datetime.now()))
+
+            if startat <= now <= endat:
+                events.append(event)
+            
+    return events
+
+def gachaAvailableTime(gachaid):
+    gacha = getGacha(gachaid)
+    if gacha is None:
+        return
+    
+    events = getActiveEventsByType("gacha")
+    if len(events) == 0:
+        return 0
+    
+    event = events[0]
+    activeGachaId = event["value"]
+    if activeGachaId != gachaid:
+        return 0
+
+    return event["endat"] - round(datetime.timestamp(datetime.now()))
+
+def getActiveEventGachaId(): 
+    master = get_master()
+    gachas = master["avatar"] 
+    for id, gacha in gachas.items():
+       if gachaAvailableTime(id) > 0:
+           return gacha['id']
+
 def randomAvatar():
     master = get_master()
     avatars = {id: av for id, av in master["avatar"].items() if av.get("ispublic", False)}
@@ -129,4 +170,6 @@ def loginRewardAmount():
         return master["config"]["login_bonus_gem"]
 
 def sortStringify(obj, indent=None):
-    return json.dumps(obj, sort_keys=True, separators=(',', ':'))
+    return json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+
+print(getActiveEventGachaId())

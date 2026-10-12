@@ -100,18 +100,25 @@ def clear():
 
     db.session.flush()
 
-    betterPlayers = db.session.query(
-        func.count(func.distinct(Ranking.creator))
-    ).filter(
-        Ranking.levelId == levelSearch.id,
-        Ranking.cleared == False,
-        Ranking.creator != gamer.id,
-        or_(
-            Ranking.time < ranking.time,
-            and_(Ranking.time == ranking.time, Ranking.id < ranking.id)
-        )
-    ).scalar() or 0
-    rank = betterPlayers + 1
+    best = db.session.query(
+        Ranking.levelId.label("levelId"),
+        Ranking.creator.label("creator"),
+        func.min(Ranking.time).label("time"),
+    ).group_by(Ranking.levelId, Ranking.creator).subquery()
+
+    subq = db.session.query(
+        best.c.levelId,
+        best.c.creator,
+        func.rank().over(
+            partition_by=best.c.levelId,
+            order_by=best.c.time.asc(),
+        ).label("rank"),
+    ).subquery()
+
+    rank = db.session.query(subq.c.rank).filter(
+        subq.c.creator == gamer.id,
+        subq.c.levelId == levelSearch.id,
+    ).scalar()
 
     db.session.commit()
 
@@ -314,6 +321,7 @@ def update():
     levelSearch.title = filter.filterText(json.get("title"))
     levelSearch.theme = theme
     levelSearch.config = config
+
     ranking: Ranking = Ranking.query.filter_by(creator=gamer.id,levelId=levelId).first()
 
     tagMatch = re.search(r'#(\w+)', levelSearch.title)
@@ -327,6 +335,11 @@ def update():
             rank.cleared = True
         
     db.session.commit()
+
+    dayAgo = int(time.time()) - 86400
+    ratingToday: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == levelSearch.id,Rating.rating > 0, Rating.createdAt >= dayAgo).scalar() or 0
+    ratingYesterday: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == levelSearch.id,Rating.rating > 0, Rating.createdAt < dayAgo).scalar() or 0
+    
     return jsonify({
         "success": True,
         "result": {
@@ -372,11 +385,11 @@ def update():
             "tier": levelSearch.tier if levelSearch.tier else 1,
             "time": ranking.time if ranking is not None else 0,
             "title": levelSearch.title,
-            "todayRating": 0,
+            "todayRating": ratingToday,
             "uuClearCount": levelSearch.uuClearCount,
             "uuCount": levelSearch.uuCount,
             "version": levelSearch.version,
-            "yesterdayRating": 0
+            "yesterdayRating": ratingYesterday
         },
         "updated": {
             "gamer": {
@@ -459,7 +472,10 @@ def delete():
    
     gamer.builderPt = max(0, gamer.builderPt - removed)
     gamer.gem = gamer.gem - 1
-    
+
+    levelCount = max(Level.query.filter_by(creator=gamer.id).count() - 1, 0)
+    gamer.levelCount = levelCount   
+
     db.session.delete(levelSearch)
     db.session.commit()
 
@@ -961,8 +977,13 @@ def post():
     db.session.add(levelData)
     db.session.add(RankingData)
 
-    gamer.levelCount = Level.query.filter_by(creator=gamer.id).count()
     gamer.inventory = Json.dumps(inventory)
+    gamer.levelCount = Level.query.filter_by(creator=gamer.id).count()
+
+    dayAgo = int(time.time()) - 86400
+    ratingToday: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == levelData.id,Rating.rating > 0, Rating.createdAt >= dayAgo).scalar() or 0
+    ratingYesterday: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == levelData.id,Rating.rating > 0, Rating.createdAt < dayAgo).scalar() or 0
+    
     db.session.commit()
 
     return jsonify({
@@ -1010,11 +1031,11 @@ def post():
             "tier": levelData.tier if levelData.tier else 1,
             "time": RankingData.time,
             "title": levelData.title,
-            "todayRating": 0,
+            "todayRating": ratingToday,
             "uuClearCount": levelData.uuClearCount,
             "uuCount": levelData.uuCount,
             "version": levelData.version,
-            "yesterdayRating": 0
+            "yesterdayRating":ratingYesterday
         },
         "updated": {
             "gamer": {
