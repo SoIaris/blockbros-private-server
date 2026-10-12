@@ -36,6 +36,10 @@ def get_master():
 
     return None
 
+def isGamerBanned(gamer):
+    now = round(datetime.timestamp(datetime.now()))
+    return gamer.visibleAt > now
+
 def GetShopItem(category, id):
     master = get_master()
 

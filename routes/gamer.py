@@ -132,9 +132,11 @@ def list():
             and_(sortColumn == decodedCursor["value"], Gamer.id < decodedCursor["id"])
         ))
  
-    rows = query.limit(pageSize + 1).all()
-    hasMore = len(rows) > pageSize
-    rows = rows[:pageSize]
+    rows = query.limit(pageSize + 1)
+
+    allRows = rows.all()
+    hasMore = len(allRows) > pageSize
+    rows = allRows[:pageSize]
     players = [row[0] for row in rows]
     nextCursor = None
  
@@ -502,7 +504,7 @@ def get():
             "updated": {},
             "timestamp": round(datetime.timestamp(datetime.now()))
         })
-    
+
     return jsonify({
         "success": True,
         "result": {

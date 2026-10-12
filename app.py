@@ -84,10 +84,6 @@ def create_app():
 
         return jsonify({"success": True, "message": "pong", "header": dict(request.headers), "body": str(extensions.sortStringify(body))})
 
-    @app.route("/")
-    def home():
-        return render_template("home/index.html")
-    
     @app.route("/levels/<int:level_id>/thumbnail") # temp route until we can save level images
     def generate_level_image(level_id):
         level: Level = Level.query.filter_by(levelId=level_id).first()

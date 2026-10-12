@@ -36,7 +36,7 @@ def LevelPostLimit():
         if not gamer:
             return False
             
-        return gamer.playerPt > 5000
+        return gamer.playerPt > 5000 or gamer.adminLevel >= 2
     except Exception as e:
         return False
 
@@ -230,12 +230,12 @@ def get():
         "levelId": levelSearch.levelId,
         "map": levelSearch.map,
         "playCount": levelSearch.playCount,
-        "rating": rating,
-        "ratingCount": ratingTotal,
+        "rating": ratingTotal,
+        "ratingCount": rating.rating if rating else 0,
         "tag": levelSearch.tag,
         "theme": levelSearch.theme,
         "tier": levelSearch.tier if levelSearch.tier else 1,
-        "time": ranking.time if ranking else 0,
+        "time": ranking.time if ranking is not None else 0,
         "title": levelSearch.title,
         "todayRating": ratingToday,
         "uuClearCount": levelSearch.uuClearCount,
@@ -370,7 +370,7 @@ def update():
             "tag": levelSearch.tag,
             "theme": levelSearch.theme,
             "tier": levelSearch.tier if levelSearch.tier else 1,
-            "time": ranking.time if ranking.time else 0,
+            "time": ranking.time if ranking is not None else 0,
             "title": levelSearch.title,
             "todayRating": 0,
             "uuClearCount": levelSearch.uuClearCount,
@@ -701,7 +701,7 @@ def list():
             "tag": levelData.tag,
             "theme": levelData.theme,
             "tier": levelData.tier or 1,
-            "time": ranking.time if ranking else 0,
+            "time": ranking.time if ranking is not None else 0,
             "title": levelData.title,
             "todayRating": ratingToday,
             "uuClearCount": levelData.uuClearCount,
@@ -741,7 +741,7 @@ def quickget():
         ratingTotal: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == randomlevel.id,Rating.rating > 0).scalar() or 0
         rating: Rating = Rating.query.filter_by(gamer=gamer.id,levelid=randomlevel.id).first()
         ranking: Ranking = Ranking.query.filter_by(creator=gamer.id,levelId=randomlevel.id).first()
-
+        
         items.append({
             "clearCount": randomlevel.clearCount,
             "clearVersion": 0,
@@ -779,11 +779,11 @@ def quickget():
             "map": randomlevel.map,
             "playCount": randomlevel.playCount,
             "rating": ratingTotal,
-            "ratingCount": rating,
+            "ratingCount": rating.rating if rating else 0,
             "tag": randomlevel.tag,
             "theme": randomlevel.theme,
             "tier": randomlevel.tier if randomlevel.tier else 1,
-            "time": ranking.time if ranking else 0,
+            "time": ranking.time if ranking is not None else 0,
             "title": randomlevel.title,
             "todayRating": ratingToday,
             "uuClearCount": randomlevel.uuClearCount,
