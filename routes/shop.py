@@ -200,7 +200,7 @@ def spin():
 
     characterId = 1
     if type == 0:
-        characterId = extensions.randomAvatar()
+        characterId = extensions.randomAvatar()['id']
     elif type == extensions.getActiveEventGachaId():
         characterId = extensions.getActiveEventGachaId()
     else:

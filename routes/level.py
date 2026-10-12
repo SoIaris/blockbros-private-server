@@ -17,7 +17,6 @@ from datetime import datetime
 import util.filter as filter
 import extensions
 import json as Json
-import hashlib
 import time
 import re
 
