@@ -99,25 +99,14 @@ def clear():
 
     db.session.flush()
 
-    best = db.session.query(
-        Ranking.levelId.label("levelId"),
-        Ranking.creator.label("creator"),
-        func.min(Ranking.time).label("time"),
-    ).group_by(Ranking.levelId, Ranking.creator).subquery()
-
-    subq = db.session.query(
-        best.c.levelId,
-        best.c.creator,
-        func.rank().over(
-            partition_by=best.c.levelId,
-            order_by=best.c.time.asc(),
-        ).label("rank"),
-    ).subquery()
-
-    rank = db.session.query(subq.c.rank).filter(
-        subq.c.creator == gamer.id,
-        subq.c.levelId == levelSearch.id,
-    ).scalar()
+    rank = db.session.query(func.count(Ranking.id)).filter(
+        Ranking.levelId == levelSearch.id,
+        Ranking.cleared == False,
+        or_(
+            Ranking.time < ranking.time,
+            and_(Ranking.time == ranking.time, Ranking.id < ranking.id),
+        ),
+    ).scalar() + 1
 
     db.session.commit()
 
@@ -316,6 +305,8 @@ def update():
             if inventory["blocks"][str(id)] < 0:
                 del inventory["blocks"][str(id)]
 
+    gamer.inventory = Json.dumps(inventory) 
+    
     levelSearch.map = map
     levelSearch.title = filter.filterText(json.get("title"))
     levelSearch.theme = theme
@@ -332,7 +323,7 @@ def update():
         ranks: Ranking = Ranking.query.filter_by(levelId=levelId).all()
         for rank in ranks:
             rank.cleared = True
-        
+            
     db.session.commit()
 
     dayAgo = int(time.time()) - 86400
@@ -438,42 +429,46 @@ def delete():
         return jsonify({
             "reason": "invalid_level"
         }), 400
-    
-    if levelSearch.creator != gamer.id or gamer.adminLevel < 1:
+
+    levelCreator: Gamer = Gamer.query.filter_by(id=levelSearch.creator).first()
+    isAdminDeleting = False if levelCreator.id != gamer.id and gamer.adminLevel < 1 else True
+
+    if not isAdminDeleting and levelCreator.id != gamer.id:
         return jsonify({
             "reason": "forbidden"
         }), 400
 
-    if gamer.gem < 1:
-        return jsonify({
-            "reason": "not_enough_gem"
-        }), 400
+    if not isAdminDeleting:
+        if gamer.gem < 1:
+            return jsonify({
+                "reason": "not_enough_gem"
+            }), 400
+
+        inventory = Json.loads(levelCreator.inventory)
     
-    inventory = Json.loads(gamer.inventory)
+        count = {}
+        for block in levelSearch.map:
+            decodedBlock = extensions.decodeBlock(block)
+            if decodedBlock["blockType"] != 0:
+                count[decodedBlock["blockType"]] = count.get(decodedBlock["blockType"], 0) + 1
+    
+        for id, amount in count.items():
+            if str(id) in inventory["blocks"]:
+                inventory["blocks"][str(id)] += amount
+    
+        levelCreator.inventory = Json.dumps(inventory)
+    
+        master = extensions.get_master()
+        removed = sum(
+            reward["builderpt"] for reward in master["builderreward"]
+            if reward["tier"] <= levelSearch.tier
+        )
+    
+        levelCreator.builderPt = max(0, levelCreator.builderPt - removed)
+        levelCreator.gem = levelCreator.gem - 1
 
-    count = {}
-    for block in levelSearch.map:
-        decodedBlock = extensions.decodeBlock(block)
-        if decodedBlock["blockType"] != 0:
-            count[decodedBlock["blockType"]] = count.get(decodedBlock["blockType"], 0) + 1
-
-    for id, amount in count.items():
-        if str(id) in inventory["blocks"]:
-            inventory["blocks"][str(id)] += amount
-
-    gamer.inventory = Json.dumps(inventory)
-
-    master = extensions.get_master()
-    removed = sum(
-        reward["builderpt"] for reward in master["builderreward"]
-        if reward["tier"] <= levelSearch.tier
-    )
-   
-    gamer.builderPt = max(0, gamer.builderPt - removed)
-    gamer.gem = gamer.gem - 1
-
-    levelCount = max(Level.query.filter_by(creator=gamer.id).count() - 1, 0)
-    gamer.levelCount = levelCount   
+    levelCount = max(Level.query.filter_by(creator=levelCreator.id).count() - 1, 0)
+    levelCreator.levelCount = levelCount   
 
     db.session.delete(levelSearch)
     db.session.commit()
@@ -519,7 +514,7 @@ def delete():
 @level.route("/list", methods=["POST"])
 @wraps.auth_required
 @wraps.crc_required
-def list():
+def level_list():
     body = request.json
     gamerId, token = request.headers["authorization"].split(":")
     gamer: Gamer = Gamer.query.filter_by(id=gamerId, token=token).first()

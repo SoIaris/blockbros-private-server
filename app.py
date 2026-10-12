@@ -165,7 +165,7 @@ def create_app():
                                     if data.get("rating"):
                                         rating: Rating = Rating.query.filter_by(gamer=gamer.id, levelid=level.id).first()
                                         ratingTotal: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == level.id,Rating.rating > 0).scalar() or 0
-
+                                        
                                         if not rating:
                                             if data.get("rating") == 1 or data.get("rating") == 2 or data.get("rating") == 3:
                                                 ratingn = Rating(gamer.id, level.id, data.get("rating"))

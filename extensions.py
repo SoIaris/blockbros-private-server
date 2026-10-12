@@ -129,9 +129,9 @@ def getActiveEventGachaId():
        if gachaAvailableTime(id) > 0:
            return gacha['id']
 
-def randomAvatar():
+def randomAvatar(inventory):
     master = get_master()
-    avatars = {id: av for id, av in master["avatar"].items() if av.get("ispublic", False)}
+    avatars = {id: av for id, av in master["avatar"].items() if av.get("ispublic", False) and id not in inventory}
 
     total = sum(av["weight"] for av in avatars.values())
     probs = {id: av["weight"] / total for id, av in avatars.items()}

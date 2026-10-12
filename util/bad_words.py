@@ -220,7 +220,6 @@ words = [
   "goddamn",
   "goddamned",
   "hardcoresex",
-  "hell",
   "heshe",
   "hoar",
   "hoare",

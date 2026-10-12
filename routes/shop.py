@@ -196,11 +196,10 @@ def spin():
         return jsonify({
             'reason': 'validation_exception'
         }), 400
-    
 
     characterId = 1
     if type == 0:
-        characterId = extensions.randomAvatar()['id']
+        characterId = extensions.randomAvatar(gamer.inventory)['id']
     elif type == extensions.getActiveEventGachaId():
         characterId = extensions.getActiveEventGachaId()
     else:

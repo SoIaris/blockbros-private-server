@@ -197,13 +197,13 @@ def login():
     gamer.country = request.headers.get('X-Vercel-Ip-Country', 'US')
     gamer.followerCount = len(Json.loads(gamer.follows)["followers"])
     cts = round(datetime.timestamp(datetime.now()))
+    loginBonus = 0
 
     if gamer.lastStreaklogin is None or gamer.lastStreaklogin == 0:
         gamer.lastStreaklogin = cts
     else:
         secondsPassed = cts - gamer.lastStreaklogin
         hoursPassed = secondsPassed / 3600
-        #print(hoursPassed)
         if hoursPassed >= 24 and hoursPassed <= 48:
             gamer.gem += extensions.loginRewardAmount()
             gamer.lastStreaklogin = cts
@@ -276,7 +276,7 @@ def login():
     return jsonify({
         "success": True,
         "result": {
-            "loginBonus": extensions.loginRewardAmount(),
+            "loginBonus": loginBonus,
             "token": gamer.token,
         },        
         "updated": {
