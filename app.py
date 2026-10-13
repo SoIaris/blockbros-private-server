@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template, send_file, url_for
+from flask import Flask, jsonify, request, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
@@ -99,8 +99,8 @@ def create_app():
         return send_file(buf, mimetype="image/png")
     
     # handlers
-    @app.after_request
-    def afterreq(r):
+    @app.before_request
+    def afterreq():
         try:
             if request.headers.get("Content-Type") in ("application/json;charset=UTF-8", "application/json"):      
                     json = request.json
@@ -229,7 +229,6 @@ def create_app():
         except Exception as e:
             print(f"Batch error: {e}")
             db.session.rollback()
-        return r
 
     @app.before_request
     def before_request_func(): # shit way of detecting proxy but it works

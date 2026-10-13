@@ -192,26 +192,32 @@ def spin():
     type = json.get("type")
     master = extensions.get_master()
     
-    if not gamer.gem >= master["config"]["character_gacha_price"]:
+    if not gamer.gem > master["config"]["character_gacha_price"]:
         return jsonify({
             'reason': 'validation_exception'
         }), 400
 
-    characterId = 1
-    if type == 0:
-        characterId = extensions.randomAvatar(gamer.inventory)['id']
-    elif type == extensions.getActiveEventGachaId():
-        characterId = extensions.getActiveEventGachaId()
-    else:
+    if not extensions.getGacha(type):
         return jsonify({
             'reason': 'validation_exception'
         }), 400
+      
+    gacha = extensions.randomGachaWeighted(gamer, type)
+    if gacha is None:
+        return({
+            "success": False,
+            "result": {},
+            "updated": {},
+            "timestamp": round(datetime.timestamp(datetime.now()))
+        })
+    
+    gachaId = gacha['id']
     
     gamer.gem -= master["config"]["character_gacha_price"]
     inventory = Json.loads(gamer.inventory)
     
-    if characterId not in inventory["avatars"]:
-        inventory["avatars"].append(characterId)
+    if gachaId not in inventory["avatars"]:
+        inventory["avatars"].append(gachaId)
         gamer.inventory = Json.dumps(inventory)
 
     db.session.commit()
@@ -219,7 +225,7 @@ def spin():
     return jsonify({
         "success": True,
         "result": {
-            "avatarId": characterId
+            "avatarId": gachaId
         },
         "updated": {
             "gamer": {

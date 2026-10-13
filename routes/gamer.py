@@ -38,26 +38,18 @@ def follow():
     follows = Json.loads(gamer.follows)
     targetfollows = Json.loads(targetGamer.follows)
 
-    try:
-        if action == "follow" and targetGamer.id not in follows["follows"] and gamer.id not in targetfollows["follows"]:
-            follows["follows"].append(targetGamer.id)
-            targetfollows["followers"].append(gamer.id)
-        elif action == "unfollow":
-            follows["follows"].remove(targetGamer.id)
-            targetfollows["followers"].remove(gamer.id)
-        elif action == "block" and targetGamer.id not in follows["blocked"]:
-            follows["blocked"].append(targetGamer.id)
-            targetfollows["blocks"].append(gamer.id)
-        elif action == "unblock":
-            follows["blocked"].remove(targetGamer.id)
-            targetfollows["blocks"].remove(gamer.id)
-    except Exception:
-        return jsonify({
-            "success": False,
-            "result": {},
-            "updated": {},
-            "timestamp": round(datetime.timestamp(datetime.now()))
-        })
+    if action == "follow" and targetGamer.id not in follows["follows"] and gamer.id not in follows["blocked"]:
+        follows["follows"].append(targetGamer.id)
+        targetfollows["followers"].append(gamer.id)
+    elif action == "unfollow":
+        follows["follows"].remove(targetGamer.id)
+        targetfollows["followers"].remove(gamer.id)
+    elif action == "block" and targetGamer.id not in follows["blocked"]:
+        follows["blocked"].append(targetGamer.id)
+        targetfollows["blocks"].append(gamer.id)
+    elif action == "unblock":
+        follows["blocked"].remove(targetGamer.id)
+        targetfollows["blocks"].remove(gamer.id)
 
     gamer.follows = Json.dumps(follows)
     targetGamer.follows = Json.dumps(targetfollows)

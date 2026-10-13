@@ -64,7 +64,7 @@ def clear():
         creator=gamer.id, levelId=levelSearch.id, cleared=False
     ).order_by(Ranking.time.asc(), Ranking.id.asc()).first()
     previousClear = Ranking.query.filter_by(
-        creator=gamer.id, levelId=levelSearch.id, cleared=True
+        creator=gamer.id, levelId=levelSearch.id, cleared=False
     ).first() is not None
     difficulty = extensions.calculateDifficulty(levelSearch.uuCount, levelSearch.uuClearCount)
 
@@ -188,6 +188,8 @@ def get():
     rating: Rating = Rating.query.filter_by(gamer=gamer.id,levelid=levelSearch.id).first()
     ranking: Ranking = Ranking.query.filter_by(creator=gamer.id,levelId=levelSearch.id).first()
 
+    print(levelSearch.version)
+
     items = []
     items.append({
         "clearCount": levelSearch.clearCount,
@@ -220,7 +222,7 @@ def get():
             "userId": str(creator.gamer_id),
             "visibleAt": creator.visibleAt
         },
-        "givenRating": -1,
+        "givenRating": rating.rating if rating is not None else -1,
         "id": levelSearch.id,
         "levelId": levelSearch.levelId,
         "map": levelSearch.map,
@@ -308,7 +310,7 @@ def update():
     gamer.inventory = Json.dumps(inventory) 
     
     levelSearch.map = map
-    levelSearch.title = filter.filterText(json.get("title"))
+    levelSearch.title = filter.filterText(title)
     levelSearch.theme = theme
     levelSearch.config = config
 
@@ -327,6 +329,7 @@ def update():
     db.session.commit()
 
     dayAgo = int(time.time()) - 86400
+    rating: Rating = db.session.query(Rating).filter_by(gamer=gamer.id, levelid=levelSearch.id).first()
     ratingToday: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == levelSearch.id,Rating.rating > 0, Rating.createdAt >= dayAgo).scalar() or 0
     ratingYesterday: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == levelSearch.id,Rating.rating > 0, Rating.createdAt < dayAgo).scalar() or 0
     
@@ -363,7 +366,7 @@ def update():
                 "userId": str(gamer.gamer_id),
                 "visibleAt": gamer.visibleAt
             },
-            "givenRating": -1,
+            "givenRating": rating.rating if rating is not None else -1,
             "id": levelSearch.id,
             "levelId": levelSearch.levelId,
             "map": levelSearch.map,
@@ -532,7 +535,7 @@ def level_list():
  
     if listType == "tag":
         sortColumn = Level.createdAt
-        query = query.filter(Level.tag == body.get("tag"))
+        query = query.filter(func.lower(Level.tag) == str(body.get("tag")).lower())
  
     if listType == "own" or listType == "activity":
         sortColumn = Level.createdAt
@@ -701,7 +704,7 @@ def level_list():
                 "userId": str(creator.gamer_id),
                 "visibleAt": creator.visibleAt
             },
-            "givenRating": -1,
+            "givenRating": myRating.rating if myRating is not None else -1,
             "id": levelData.id,
             "levelId": levelData.levelId,
             "map": levelData.map,
@@ -783,7 +786,7 @@ def quickget():
                 "userId": str(creator.gamer_id),
                 "visibleAt": creator.visibleAt
             },
-            "givenRating": -1,
+            "givenRating": rating.rating if rating is not None else -1,
             "id": randomlevel.id,
             "levelId": randomlevel.levelId,
             "map": randomlevel.map,

@@ -31,7 +31,7 @@ class Level(db.Model):
         self.theme = theme
         self.map = map
         self.createdAt = round(datetime.timestamp(datetime.now()))
-        self.id = random.randint(1000000000000000, 9999999999999999)
+        self.id = random.randint(1000000000000000, 9007199254740991)
         
     def __repr__(self):
         return f'<Level {self.id}>'

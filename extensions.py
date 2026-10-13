@@ -1,6 +1,5 @@
 import json
 import random
-import hashlib
 
 from datetime import datetime
 from app import db
@@ -25,7 +24,7 @@ deleted_user = {
     "nickname": "(deleted)",
     "playerPt": 0,
     "visibleAt": 0
-},
+}
 
 # made this a function so it gets a updated master if changed without restarting the api
 def get_master():
@@ -35,6 +34,46 @@ def get_master():
         return master
 
     return None
+
+def getAvatars():
+    return get_master()["avatar"]
+
+def getGachas():
+    return get_master()["gacha"]
+
+def getGacha(gachaId):
+    return getGachas().get(str(gachaId))
+
+def getGachaItemIds(gachaId):
+    gacha = getGacha(gachaId)
+    return gacha["items"] if gacha else []
+
+def getValidAvatars(gamer, gachaId=None):
+    avatars = getAvatars()
+
+    if gachaId is None:
+        avatarIds = sorted(int(key) for key in avatars.keys())
+    else:
+        avatarIds = sorted(getGachaItemIds(gachaId))
+
+    inventory = json.loads(gamer.inventory)
+    ownedAvatars = set(inventory.get("avatars", []))
+
+    result = []
+    for avatarId in avatarIds:
+        avatar = avatars.get(str(avatarId))
+        if avatar is None:
+            continue
+
+        if avatar.get("ispublic") == 0:
+            continue
+
+        if avatarId in ownedAvatars:
+            continue
+
+        result.append(avatar)
+
+    return result
 
 def isGamerBanned(gamer):
     now = round(datetime.timestamp(datetime.now()))
@@ -88,9 +127,6 @@ def decodeBlock(value):
         "dirType": value & int("1111", 2),
     }
 
-def getGacha(gachaid):
-    return get_master()["avatar"][gachaid]
-
 def getActiveEventsByType(type):
     events = []
 
@@ -109,7 +145,7 @@ def getActiveEventsByType(type):
 def gachaAvailableTime(gachaid):
     gacha = getGacha(gachaid)
     if gacha is None:
-        return
+        return 0
     
     events = getActiveEventsByType("gacha")
     if len(events) == 0:
@@ -117,34 +153,24 @@ def gachaAvailableTime(gachaid):
     
     event = events[0]
     activeGachaId = event["value"]
-    if activeGachaId != gachaid:
+    if str(activeGachaId) != str(gachaid):
         return 0
 
     return event["endat"] - round(datetime.timestamp(datetime.now()))
 
 def getActiveEventGachaId(): 
-    master = get_master()
-    gachas = master["avatar"] 
+    gachas = getGachas()
     for id, gacha in gachas.items():
        if gachaAvailableTime(id) > 0:
            return gacha['id']
 
-def randomAvatar(inventory):
-    master = get_master()
-    avatars = {id: av for id, av in master["avatar"].items() if av.get("ispublic", False) and id not in inventory}
+def randomGachaWeighted(gamer, gachaId):
+    avatars = getValidAvatars(gamer, gachaId)
+    if not avatars:
+        return None
 
-    total = sum(av["weight"] for av in avatars.values())
-    probs = {id: av["weight"] / total for id, av in avatars.items()}
-
-    r = random.uniform(0, 1)
-    cp = 0
-
-    for id, p in probs.items():
-        cp += p
-        if r <= cp:
-            return avatars[id]
-        
-    return 1
+    weights = [av.get("weight", 1) for av in avatars]
+    return random.choices(avatars, weights=weights, k=1)[0]
 
 def loginRewardAmount():
     date = datetime.now()
@@ -171,5 +197,3 @@ def loginRewardAmount():
 
 def sortStringify(obj, indent=None):
     return json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
-
-print(getActiveEventGachaId())
