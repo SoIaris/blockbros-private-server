@@ -11,6 +11,7 @@ from datetime import datetime
 from util import wraps, filter
 from util import cursor as cursor_key
 
+import extensions
 import json as Json
 import re
 
@@ -261,7 +262,15 @@ def list():
             Comment.createdAt < decodedCursor["createdAt"],
             and_(Comment.createdAt == decodedCursor["createdAt"], Comment.commentId < decodedCursor["id"])
         ))
- 
+
+    if gamer.adminLevel < 1:
+        query = query.join(Gamer, Gamer.id == Comment.gamer_id).filter(
+            or_(
+                extensions.isGamerBanned(Gamer.visibleAt) == False, 
+                Gamer.id == gamer.id
+            )
+        )
+    
     comments = query.limit(pageSize + 1).all()
     hasMore = len(comments) > pageSize
     comments = comments[:pageSize]

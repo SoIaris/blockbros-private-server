@@ -92,7 +92,6 @@ def transactionfinish():
 
     gem_id = json.get("gem_id")
     receipt_data = json.get("receipt_data")
-    print(gem_id, receipt_data)
 
     gamer.hasUnfinishedIAP = False
 
@@ -192,7 +191,7 @@ def spin():
     type = json.get("type")
     master = extensions.get_master()
     
-    if not gamer.gem > master["config"]["character_gacha_price"]:
+    if gamer.gem < master["config"]["character_gacha_price"]:
         return jsonify({
             'reason': 'validation_exception'
         }), 400

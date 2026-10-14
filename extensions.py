@@ -75,9 +75,9 @@ def getValidAvatars(gamer, gachaId=None):
 
     return result
 
-def isGamerBanned(gamer):
+def isGamerBanned(visibleAt):
     now = round(datetime.timestamp(datetime.now()))
-    return gamer.visibleAt > now
+    return visibleAt > now
 
 def GetShopItem(category, id):
     master = get_master()

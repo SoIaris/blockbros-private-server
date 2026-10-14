@@ -123,7 +123,15 @@ def list():
             sortColumn < decodedCursor["value"],
             and_(sortColumn == decodedCursor["value"], Gamer.id < decodedCursor["id"])
         ))
- 
+    
+    if gamer.adminLevel < 1:
+        query = query.filter(
+            or_(
+                extensions.isGamerBanned(Gamer.visibleAt) == False,
+                Gamer.id == gamer.id
+            )
+        )
+    
     rows = query.limit(pageSize + 1)
 
     allRows = rows.all()
@@ -488,8 +496,11 @@ def sync():
 @wraps.crc_required
 def get():
     json = request.json
-    gamer: Gamer = Gamer.query.filter_by(gamer_id=json["gamer_id"]).first()
-    if not gamer:
+    id, token = request.headers["authorization"].split(":")
+    gamer: Gamer = Gamer.query.filter_by(id=id).first()
+
+    searchGamer: Gamer = Gamer.query.filter_by(gamer_id=json["gamer_id"]).first()
+    if not searchGamer:
         return jsonify({
             "success": False,
             "result": {},
@@ -497,35 +508,44 @@ def get():
             "timestamp": round(datetime.timestamp(datetime.now()))
         })
 
+    if extensions.isGamerBanned(searchGamer.visibleAt) and gamer.adminLevel < 1 and gamer.id != searchGamer.id:
+        return jsonify({
+            "success": False,
+            "result": {},
+            "updated": {},
+            "timestamp": round(datetime.timestamp(datetime.now()))
+        })
+
+
     return jsonify({
         "success": True,
         "result": {
-            "adminLevel": gamer.adminLevel,
-            "avatar": gamer.avatar,
-            "builderPt": gamer.builderPt,
-            "campaigns": gamer.campaigns,
-            "channel": gamer.channel,
-            "clearCount": gamer.clearCount,
-            "commentableAt": gamer.commentableAt,
-            "country": gamer.country,
-            "createdAt": gamer.createdAt,
-            "emblemCount": gamer.emblemCount,
-            "followerCount": gamer.followerCount,
-            "gamerId": gamer.gamer_id,
-            "gem": gamer.gem,
-            "hasUnfinishedIAP": gamer.hasUnfinishedIAP,
-            "id": gamer.id,
-            "inventory": Json.loads(gamer.inventory),
-            "lang": gamer.lang,
-            **({"homeLevel": gamer.homeLevel} if gamer.homeLevel is not None else {}),
-            "lastLoginAt": gamer.lastLoginAt,
-            "levelCount": gamer.levelCount,
-            "maxVideoId": gamer.maxVideoId,
-            "nameVersion": gamer.nameVersion,
-            "nickname": gamer.nickname,
-            "playerPt": gamer.playerPt,
-            "researches": gamer.researches,
-            "visibleAt": gamer.visibleAt
+            "adminLevel": searchGamer.adminLevel,
+            "avatar": searchGamer.avatar,
+            "builderPt": searchGamer.builderPt,
+            "campaigns": searchGamer.campaigns,
+            "channel": searchGamer.channel,
+            "clearCount": searchGamer.clearCount,
+            "commentableAt": searchGamer.commentableAt,
+            "country": searchGamer.country,
+            "createdAt": searchGamer.createdAt,
+            "emblemCount": searchGamer.emblemCount,
+            "followerCount": searchGamer.followerCount,
+            "gamerId": searchGamer.gamer_id,
+            "gem": searchGamer.gem,
+            "hasUnfinishedIAP": searchGamer.hasUnfinishedIAP,
+            "id": searchGamer.id,
+            "inventory": Json.loads(searchGamer.inventory),
+            "lang": searchGamer.lang,
+            **({"homeLevel": searchGamer.homeLevel} if searchGamer.homeLevel is not None else {}),
+            "lastLoginAt": searchGamer.lastLoginAt,
+            "levelCount": searchGamer.levelCount,
+            "maxVideoId": searchGamer.maxVideoId,
+            "nameVersion": searchGamer.nameVersion,
+            "nickname": searchGamer.nickname,
+            "playerPt": searchGamer.playerPt,
+            "researches": searchGamer.researches,
+            "visibleAt": searchGamer.visibleAt
         },
         "updated": {},
         "timestamp": round(datetime.timestamp(datetime.now()))
@@ -536,40 +556,51 @@ def get():
 @wraps.crc_required
 def search():
     json = request.json
-    gamer: Gamer = Gamer.query.filter(func.lower(Gamer.nickname) == func.lower(json["nickname"])).first()
-    if not gamer:
+    id, token = request.headers["authorization"].split(":")
+    gamer: Gamer = Gamer.query.filter_by(id=id).first()
+
+    searchGamer: Gamer = Gamer.query.filter(func.lower(Gamer.nickname) == func.lower(json["nickname"])).first()
+    if not searchGamer:
         return jsonify({
             "result": {},
             "success": False,
             "updated": {},
             "timestamp": round(datetime.timestamp(datetime.now()))
         })
-
+    
+    if extensions.isGamerBanned(searchGamer.visibleAt) and gamer.adminLevel < 1 and gamer.id != searchGamer.id:
+        return jsonify({
+            "success": False,
+            "result": {},
+            "updated": {},
+            "timestamp": round(datetime.timestamp(datetime.now()))
+        })
+    
     return jsonify({
         "result": {
             'all_loaded': True,
             "index": 1,
             'items': [
                 {
-                    "adminLevel": gamer.adminLevel,
-                    "avatar": gamer.avatar,
-                    "builderPt": gamer.builderPt,
-                    "channel": gamer.channel,
-                    "commentableAt": gamer.commentableAt,
-                    "country": gamer.country,
-                    "createdAt": gamer.createdAt,
-                    "emblemCount": gamer.emblemCount,
-                    "followerCount": gamer.followerCount,
-                    "gamerId": gamer.gamer_id,
-                    "id": gamer.id,
-                    "inventory": Json.loads(gamer.inventory),
-                    **({"homeLevel": gamer.homeLevel} if gamer.homeLevel is not None else {}),
-                    "lastLoginAt": gamer.lastLoginAt,
-                    "levelCount": gamer.levelCount,
-                    "nickname": gamer.nickname,
-                    "playerPt": gamer.playerPt,
-                    "userId": str(gamer.gamer_id),
-                    "visibleAt": gamer.visibleAt
+                    "adminLevel": searchGamer.adminLevel,
+                    "avatar": searchGamer.avatar,
+                    "builderPt": searchGamer.builderPt,
+                    "channel": searchGamer.channel,
+                    "commentableAt": searchGamer.commentableAt,
+                    "country": searchGamer.country,
+                    "createdAt": searchGamer.createdAt,
+                    "emblemCount": searchGamer.emblemCount,
+                    "followerCount": searchGamer.followerCount,
+                    "gamerId": searchGamer.gamer_id,
+                    "id": searchGamer.id,
+                    "inventory": Json.loads(searchGamer.inventory),
+                    **({"homeLevel": searchGamer.homeLevel} if searchGamer.homeLevel is not None else {}),
+                    "lastLoginAt": searchGamer.lastLoginAt,
+                    "levelCount": searchGamer.levelCount,
+                    "nickname": searchGamer.nickname,
+                    "playerPt": searchGamer.playerPt,
+                    "userId": str(searchGamer.gamer_id),
+                    "visibleAt": searchGamer.visibleAt
                 }
             ],
         },

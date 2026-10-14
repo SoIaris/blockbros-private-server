@@ -33,7 +33,6 @@ import io
     TODO:
         level/list activity type
         campaign record leaderboard
-        make banned gamers not show
 '''
 
 class config:
@@ -100,138 +99,7 @@ def create_app():
     
     # handlers
     @app.before_request
-    def afterreq():
-        try:
-            if request.headers.get("Content-Type") in ("application/json;charset=UTF-8", "application/json"):      
-                    json = request.json
-                    id, token = request.headers["authorization"].split(":")
-                    gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
-                    if gamer and json.get("batch") and json.get("batch") != None:
-                        batch = json["batch"]
-                        #if batch.get("campaign"): # campaign logic that i prolly can't use
-                        #    campaigns = batch.get("campaign")
-                        #    for campaign in campaigns:
-                        #        time = campaign["time"]
-                        #        ranking: Ranking = Ranking.query.filter_by(creator=gamer.id, campaignId=campaign["campaign_id"], cleared=False).order_by(Ranking.time.asc()).first()
-                        #        previousClear = Ranking.query.filter_by(creator=gamer.id, campaignId=campaign["campaign_id"],cleared=True).first() is not None
-                        #        firstClear = False
-                        #        if time < ranking.time:
-                        #            ranking.time = time
-                        #            ownRecord = True
-                        #        else:
-                        #            ranking = Ranking(time, None, gamer.id, campaignId=campaign["campaign_id"])
-                        #            if not previousClear:
-                        #                firstClear = True
-
-                        #            db.session.add(ranking)
-
-                        #        if firstClear:
-                        #            print("clear")
-
-                        if batch.get("gamer"):
-                            gamerb = batch.get("gamer")
-                            if gamerb.get("avatar"):
-                                gamer.avatar = batch["gamer"]["avatar"]
-                            if gamerb.get("homeLevel"):
-                                levelid = gamerb.get("homeLevel").get("levelId")
-                                level: Level = Level.query.filter_by(id=levelid).first()
-                                if level:
-                                    gamer.homeLevel = {
-                                        'levelId': level.id,
-                                        'map': level.map,
-                                        'theme': level.theme
-                                    }
-                                    db.session.commit()
-
-                        if batch.get("level"):
-                            for id, data in batch.get("level").items():
-                                level: Level = Level.query.filter_by(id=id).first()
-                                if level:
-                                    print(data)
-                                    if data.get("play"):
-                                        level.playCount += data.get("play")
-                                        if not Play.query.filter_by(gamer=gamer.id, levelid=level.id).first():
-                                            play = Play(gamer.id, level.id)
-                                            level.uuCount += 1
-                                            db.session.add(play)
-                                    if data.get("clear"):
-                                        level.clearCount += data.get("clear")
-                                    if 'fav' in data:
-                                        if data.get("fav") == True and str(level.id) not in gamer.favorites:
-                                            gamer.favorites.append(str(level.id))
-                                        elif data.get("fav") == False and str(level.id) in gamer.favorites:
-                                            gamer.favorites.remove(str(level.id))
-
-                                    if data.get("rating"):
-                                        rating: Rating = Rating.query.filter_by(gamer=gamer.id, levelid=level.id).first()
-                                        ratingTotal: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == level.id,Rating.rating > 0).scalar() or 0
-                                        
-                                        if not rating:
-                                            if data.get("rating") == 1 or data.get("rating") == 2 or data.get("rating") == 3:
-                                                ratingn = Rating(gamer.id, level.id, data.get("rating"))
-                                                creator: Gamer = Gamer.query.filter_by(id=level.creator).first()
-                                                if creator:
-                                                    if ratingTotal + data.get("rating") >= 10 and level.tier == 0:
-                                                        level.tier = 1
-                                                        creator.gifts.append({
-                                                            "builderPt": 5,
-                                                            "desc": "ui_builder_gift_desc",
-                                                            "params": {
-                                                              "tier": level.tier,
-                                                              "level_id": level.levelId,
-                                                              "level_title": level.title,
-                                                              "rating": ratingTotal
-                                                            },
-                                                            "productId": 0,
-                                                            "productType": "none",
-                                                            "quantity": 0,
-                                                            "senderId": 0,
-                                                            "title": "ui_builder_gift_title"
-                                                        })
-                                                    elif ratingTotal + data.get("rating") >= 100 and level.tier == 1:
-                                                        level.tier = 2
-                                                        creator.gifts.append({
-                                                            "builderPt": 50,
-                                                            "desc": "ui_builder_gift_desc",
-                                                            "params": {
-                                                              "tier": level.tier,
-                                                              "level_id": level.levelId,
-                                                              "level_title": level.title,
-                                                              "rating": ratingTotal
-                                                            },
-                                                            "productId": 0,
-                                                            "productType": "none",
-                                                            "quantity": 0,
-                                                            "senderId": 0,
-                                                            "title": "ui_builder_gift_title"
-                                                        })
-                                                    elif ratingTotal + data.get("rating") >= 1000 and level.tier == 2:
-                                                        level.tier = 3
-                                                        creator.gifts.append({
-                                                            "builderPt": 250,
-                                                            "desc": "ui_builder_gift_desc",
-                                                            "params": {
-                                                              "tier": level.tier,
-                                                              "level_id": level.levelId,
-                                                              "level_title": level.title,
-                                                              "rating": ratingTotal
-                                                            },
-                                                            "productId": 0,
-                                                            "productType": "none",
-                                                            "quantity": 0,
-                                                            "senderId": 0,
-                                                            "title": "ui_builder_gift_title"
-                                                        })
-
-                                                db.session.add(ratingn)
-                        db.session.commit()
-
-        except Exception as e:
-            print(f"Batch error: {e}")
-            db.session.rollback()
-
-    @app.before_request
-    def before_request_func(): # shit way of detecting proxy but it works
+    def before_request_func():
         try:
             ip = request.remote_addr or request.headers.get("x-real-ip")
             res = requests.get(f"https://vpnapi.io/api/{ip}?key={app.config['VPNAPI_KEY']}")
@@ -242,6 +110,135 @@ def create_app():
                     return jsonify({}), 403
         except Exception as e:
             pass
+
+        try:
+            if request.headers.get("Content-Type") in ("application/json;charset=UTF-8", "application/json"):      
+                json = request.json
+                id, token = request.headers["authorization"].split(":")
+                gamer: Gamer = Gamer.query.filter_by(id=id, token=token).first()
+                if gamer and json.get("batch") and json.get("batch") != None:
+                    batch = json["batch"]
+                    #if batch.get("campaign"): # campaign logic that i prolly can't use
+                    #    campaigns = batch.get("campaign")
+                    #    for campaign in campaigns:
+                    #        time = campaign["time"]
+                    #        ranking: Ranking = Ranking.query.filter_by(creator=gamer.id, campaignId=campaign["campaign_id"], cleared=False).order_by(Ranking.time.asc()).first()
+                    #        previousClear = Ranking.query.filter_by(creator=gamer.id, campaignId=campaign["campaign_id"],cleared=True).first() is not None
+                    #        firstClear = False
+                    #        if time < ranking.time:
+                    #            ranking.time = time
+                    #            ownRecord = True
+                    #        else:
+                    #            ranking = Ranking(time, None, gamer.id, campaignId=campaign["campaign_id"])
+                    #            if not previousClear:
+                    #                firstClear = True
+    
+                    #            db.session.add(ranking)
+    
+                    #        if firstClear:
+                    #            print("clear")
+    
+                    if batch.get("gamer"):
+                        gamerb = batch.get("gamer")
+                        if gamerb.get("avatar"):
+                            gamer.avatar = batch["gamer"]["avatar"]
+                        if gamerb.get("homeLevel"):
+                            levelid = gamerb.get("homeLevel").get("levelId")
+                            level: Level = Level.query.filter_by(id=levelid).first()
+                            if level:
+                                gamer.homeLevel = {
+                                    'levelId': level.id,
+                                    'map': level.map,
+                                    'theme': level.theme
+                                }
+                                db.session.commit()
+    
+                    if batch.get("level"):
+                        for id, data in batch.get("level").items():
+                            level: Level = Level.query.filter_by(id=id).first()
+                            if level:
+                                print(data)
+                                if data.get("play"):
+                                    level.playCount += data.get("play")
+                                    if not Play.query.filter_by(gamer=gamer.id, levelid=level.id).first():
+                                        play = Play(gamer.id, level.id)
+                                        level.uuCount += 1
+                                        db.session.add(play)
+                                if data.get("clear"):
+                                    level.clearCount += data.get("clear")
+                                if 'fav' in data:
+                                    if data.get("fav") == True and str(level.id) not in gamer.favorites:
+                                        gamer.favorites.append(str(level.id))
+                                    elif data.get("fav") == False and str(level.id) in gamer.favorites:
+                                        gamer.favorites.remove(str(level.id))
+    
+                                if data.get("rating"):
+                                    rating: Rating = Rating.query.filter_by(gamer=gamer.id, levelid=level.id).first()
+                                    ratingTotal: Rating = db.session.query(func.sum(Rating.rating)).filter(Rating.levelid == level.id,Rating.rating > 0).scalar() or 0
+                                    
+                                    if not rating:
+                                        if data.get("rating") == 1 or data.get("rating") == 2 or data.get("rating") == 3:
+                                            ratingn = Rating(gamer.id, level.id, data.get("rating"))
+                                            creator: Gamer = Gamer.query.filter_by(id=level.creator).first()
+                                            if creator:
+                                                if ratingTotal + data.get("rating") >= 10 and level.tier == 0:
+                                                    level.tier = 1
+                                                    creator.gifts.append({
+                                                        "builderPt": 5,
+                                                        "desc": "ui_builder_gift_desc",
+                                                        "params": {
+                                                          "tier": level.tier,
+                                                          "level_id": level.levelId,
+                                                          "level_title": level.title,
+                                                          "rating": ratingTotal
+                                                        },
+                                                        "productId": 0,
+                                                        "productType": "none",
+                                                        "quantity": 0,
+                                                        "senderId": 0,
+                                                        "title": "ui_builder_gift_title"
+                                                    })
+                                                elif ratingTotal + data.get("rating") >= 100 and level.tier == 1:
+                                                    level.tier = 2
+                                                    creator.gifts.append({
+                                                        "builderPt": 50,
+                                                        "desc": "ui_builder_gift_desc",
+                                                        "params": {
+                                                          "tier": level.tier,
+                                                          "level_id": level.levelId,
+                                                          "level_title": level.title,
+                                                          "rating": ratingTotal
+                                                        },
+                                                        "productId": 0,
+                                                        "productType": "none",
+                                                        "quantity": 0,
+                                                        "senderId": 0,
+                                                        "title": "ui_builder_gift_title"
+                                                    })
+                                                elif ratingTotal + data.get("rating") >= 1000 and level.tier == 2:
+                                                    level.tier = 3
+                                                    creator.gifts.append({
+                                                        "builderPt": 250,
+                                                        "desc": "ui_builder_gift_desc",
+                                                        "params": {
+                                                          "tier": level.tier,
+                                                          "level_id": level.levelId,
+                                                          "level_title": level.title,
+                                                          "rating": ratingTotal
+                                                        },
+                                                        "productId": 0,
+                                                        "productType": "none",
+                                                        "quantity": 0,
+                                                        "senderId": 0,
+                                                        "title": "ui_builder_gift_title"
+                                                    })
+    
+                                            db.session.add(ratingn)
+                    db.session.commit()
+    
+        except Exception as e:
+            print(f"Batch error: {e}")
+            db.session.rollback()
         
     @app.errorhandler(404)
     def handle_404(error):

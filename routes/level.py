@@ -231,7 +231,7 @@ def get():
         "ratingCount": rating.rating if rating else 0,
         "tag": levelSearch.tag,
         "theme": levelSearch.theme,
-        "tier": levelSearch.tier if levelSearch.tier else 1,
+        "tier": levelSearch.tier if levelSearch.tier else 0,
         "time": ranking.time if ranking is not None else 0,
         "title": levelSearch.title,
         "todayRating": ratingToday,
@@ -263,7 +263,7 @@ def update():
     levelId = json.get("level_id")
 
     levelSearch: Level = Level.query.filter_by(id=levelId).first()
-    if not levelSearch:
+    if levelSearch is None:
         return jsonify({}), 500
     
     if levelSearch.creator != gamer.id:
@@ -375,7 +375,7 @@ def update():
             "ratingCount": levelSearch.ratingCount,
             "tag": levelSearch.tag,
             "theme": levelSearch.theme,
-            "tier": levelSearch.tier if levelSearch.tier else 1,
+            "tier": levelSearch.tier if levelSearch.tier else 0,
             "time": ranking.time if ranking is not None else 0,
             "title": levelSearch.title,
             "todayRating": ratingToday,
@@ -594,6 +594,14 @@ def level_list():
             sortColumn < decodedCursor["value"],
             and_(sortColumn == decodedCursor["value"], Level.id < decodedCursor["id"])
         ))
+
+    if gamer.adminLevel < 1:
+        query = query.join(Gamer, Gamer.id == Level.creator).filter(
+            or_(
+                extensions.isGamerBanned(Gamer.visibleAt) == False, 
+                Gamer.id == gamer.id
+            )
+        )
  
     rows = query.limit(pageSize + 1).all()
     hasMore = len(rows) > pageSize
@@ -713,7 +721,7 @@ def level_list():
             "ratingCount": myRating.rating if myRating else 0,
             "tag": levelData.tag,
             "theme": levelData.theme,
-            "tier": levelData.tier or 1,
+            "tier": levelData.tier or 0,
             "time": ranking.time if ranking is not None else 0,
             "title": levelData.title,
             "todayRating": ratingToday,
@@ -795,7 +803,7 @@ def quickget():
             "ratingCount": rating.rating if rating else 0,
             "tag": randomlevel.tag,
             "theme": randomlevel.theme,
-            "tier": randomlevel.tier if randomlevel.tier else 1,
+            "tier": randomlevel.tier if randomlevel.tier else 0,
             "time": ranking.time if ranking is not None else 0,
             "title": randomlevel.title,
             "todayRating": ratingToday,
@@ -825,7 +833,10 @@ def ranklist():
     levelId = body.get("level_id")
     cursor = body.get("cursor")
     pageSize = 20
- 
+
+    id, token = request.headers["authorization"].split(":")
+
+    gamer: Gamer = Gamer.query.filter_by(id=id).first()
     query = Ranking.query.filter_by(levelId=levelId, cleared=False).order_by(Ranking.time.asc(), Ranking.id.asc())
  
     if cursor:
@@ -843,6 +854,11 @@ def ranklist():
             Ranking.time > decodedCursor["time"],
             and_(Ranking.time == decodedCursor["time"], Ranking.id > decodedCursor["id"])
         ))
+
+    if gamer.adminLevel < 1:
+        query = query.outerjoin(Gamer, Gamer.id == Ranking.creator).filter(
+            or_(Gamer.id.is_(None), extensions.isGamerBanned(Gamer.visibleAt) == False)
+        )
  
     ranks = query.limit(pageSize + 1).all()
     hasMore = len(ranks) > pageSize
@@ -864,40 +880,40 @@ def ranklist():
     items = []
  
     for rank in ranks:
-        gamer = gamers.get(rank.creator)
- 
-        if not gamer:
+        rankgamer = gamers.get(rank.creator)
+        if not rankgamer:
             items.append({
                 "gamer": extensions.deleted_user,
                 "levelId": rank.levelId,
                 "time": rank.time
             })
+
             continue
  
-        if gamer.id not in inventories:
-            inventories[gamer.id] = Json.loads(gamer.inventory)
+        if rankgamer.id not in inventories:
+            inventories[rankgamer.id] = Json.loads(rankgamer.inventory)
  
         items.append({
             "gamer": {
-                "adminLevel": gamer.adminLevel,
-                "avatar": gamer.avatar,
-                "builderPt": gamer.builderPt,
-                "channel": gamer.channel,
-                "commentableAt": gamer.commentableAt,
-                "country": gamer.country,
-                "createdAt": gamer.createdAt,
-                "emblemCount": gamer.emblemCount,
-                "followerCount": gamer.followerCount,
-                "gamerId": gamer.gamer_id,
-                **({"homeLevel": gamer.homeLevel} if gamer.homeLevel is not None else {}),
-                "id": gamer.id,
-                "inventory": inventories[gamer.id],
-                "lastLoginAt": gamer.lastLoginAt,
-                "levelCount": gamer.levelCount,
-                "nickname": gamer.nickname,
-                "playerPt": gamer.playerPt,
-                "userId": str(gamer.gamer_id),
-                "visibleAt": gamer.visibleAt
+                "adminLevel": rankgamer.adminLevel,
+                "avatar": rankgamer.avatar,
+                "builderPt": rankgamer.builderPt,
+                "channel": rankgamer.channel,
+                "commentableAt": rankgamer.commentableAt,
+                "country": rankgamer.country,
+                "createdAt": rankgamer.createdAt,
+                "emblemCount": rankgamer.emblemCount,
+                "followerCount": rankgamer.followerCount,
+                "gamerId": rankgamer.gamer_id,
+                **({"homeLevel": rankgamer.homeLevel} if rankgamer.homeLevel is not None else {}),
+                "id": rankgamer.id,
+                "inventory": inventories[rankgamer.id],
+                "lastLoginAt": rankgamer.lastLoginAt,
+                "levelCount": rankgamer.levelCount,
+                "nickname": rankgamer.nickname,
+                "playerPt": rankgamer.playerPt,
+                "userId": str(rankgamer.gamer_id),
+                "visibleAt": rankgamer.visibleAt
             },
             "levelId": rank.levelId,
             "time": rank.time
@@ -1025,7 +1041,7 @@ def post():
             "ratingCount": levelData.ratingCount,
             "tag": levelData.tag,
             "theme": levelData.theme,
-            "tier": levelData.tier if levelData.tier else 1,
+            "tier": levelData.tier if levelData.tier else 0,
             "time": RankingData.time,
             "title": levelData.title,
             "todayRating": ratingToday,
