@@ -13,6 +13,7 @@ from util import cursor as cursor_key
 
 import extensions
 import json as Json
+import copy
 import re
 
 comment = Blueprint("comment", __name__)
@@ -92,39 +93,44 @@ def post():
         level: Level = Level.query.filter_by(id=int(levelid)).first()
         if level:
             levelCreator: Gamer = Gamer.query.filter_by(id=level.creator).first()
-
+    
             # notification stuff
-            if re.search(r'@(\w+)', json.get("comment")): # @GAMER
-                user = re.search(r'@(\w+)', json.get("comment")).group(1)
+            gamerSearch = None
+            mentionMatch = re.search(r'@(\w+)', json.get("comment"))
+            if mentionMatch: # @GAMER
+                user = mentionMatch.group(1)
                 gamerSearch: Gamer = Gamer.query.filter(func.lower(Gamer.nickname) == func.lower(user)).first()
-                if gamerSearch:
-                    existingNotification = next(
-                        (n for n in gamerSearch.notifications if n["id"] == f"mention{level.id}"),
-                        None
-                    )
-                    if existingNotification:
-                        existingNotification['updated_at'] = round(datetime.timestamp(datetime.now()))
-                    else:
-                        gamerSearch.notifications.append({
-                            "args": {
-                              "level_id": level.id,
-                              "level_title": level.title,
-                              "senders": [
-                                {
-                                    "id": gamer.id,
-                                    "nickname": gamer.nickname,
-                                    "time": round(datetime.timestamp(datetime.now()))
-                                }
-                              ]
-                            },
-                            "id": f"mention{level.id}",
-                            "type": "mention",
-                            "updated_at": round(datetime.timestamp(datetime.now()))
-                        })
-
-            if levelCreator.id != gamer.id: # comment notification
+    
+            if gamerSearch:
+                notifications = copy.deepcopy(gamerSearch.notifications)
+                existingNotification = next(
+                    (n for n in notifications if n["id"] == f"mention{level.id}"),
+                    None
+                )
+                if existingNotification:
+                    existingNotification['updated_at'] = round(datetime.timestamp(datetime.now()))
+                else:
+                    notifications.append({
+                        "args": {
+                          "level_id": level.id,
+                          "level_title": level.title,
+                          "senders": [
+                            {
+                                "id": gamer.id,
+                                "nickname": gamer.nickname,
+                                "time": round(datetime.timestamp(datetime.now()))
+                            }
+                          ]
+                        },
+                        "id": f"mention{level.id}",
+                        "type": "mention",
+                        "updated_at": round(datetime.timestamp(datetime.now()))
+                    })
+                gamerSearch.notifications = notifications
+            elif levelCreator.id != gamer.id: # comment notification
+                notifications = copy.deepcopy(levelCreator.notifications)
                 existingcommentNotification = next(
-                    (n for n in levelCreator.notifications if n["id"] == f"comment{level.id}"),
+                    (n for n in notifications if n["id"] == f"comment{level.id}"),
                     None
                 )
                 if existingcommentNotification:
@@ -135,7 +141,7 @@ def post():
                     })
                     existingcommentNotification['updated_at'] = round(datetime.timestamp(datetime.now()))
                 else:
-                    levelCreator.notifications.append(
+                    notifications.append(
                         {
                           "args": {
                             "level_id": level.id,
@@ -152,6 +158,7 @@ def post():
                           "type": "comment",
                           "updated_at": round(datetime.timestamp(datetime.now()))
                     })
+                levelCreator.notifications = notifications
             
     newComment = Comment(groupKey, str(json["comment"]), "plain", json["options"], gamer.id)
 
