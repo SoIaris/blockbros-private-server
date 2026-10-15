@@ -170,18 +170,20 @@ def post():
         newComment.message = newComment.message.replace(":youtube", "")
         newComment.type = "youtube"
     elif re.search(r'\$(\d+)$', newComment.message):
-        print(re.search(r'\$(\d+)$', newComment.message).group(1))
-        emblem: Emblem = Emblem.query.filter_by(refId=re.search(r'\$(\d+)$', newComment.message).group(1)).first()
+        refId = re.search(r'\$(\d+)$', newComment.message).group(1)
+        emblem: Emblem = Emblem.query.filter_by(refId=refId).first()
         if emblem:
             newComment.args["refId"] = emblem.refId
             newComment.type = "emblem"
-        newComment.message = newComment.message.replace(f"${emblem.refId}", "")
+
+        newComment.message = newComment.message.replace(f"${refId}", "")
     elif re.search(r'\#(\d+)$', newComment.message):
         id = int(re.search(r'\#(\d+)$', newComment.message).group(1))
         level: Level = Level.query.filter_by(levelId=id+10_000).first()
         if level:
             newComment.args["levelId"] = level.levelId
             newComment.type = "level"
+            
         newComment.message = newComment.message.replace(f"#{id}", "")
     elif re.search(r'#(\w+)', newComment.message):
         tag = re.search(r'#(\w+)', newComment.message).group(1)

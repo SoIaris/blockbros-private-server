@@ -172,28 +172,27 @@ def randomGachaWeighted(gamer, gachaId):
     weights = [av.get("weight", 1) for av in avatars]
     return random.choices(avatars, weights=weights, k=1)[0]
 
-def loginRewardAmount():
+def isGemBoostWeek():
     date = datetime.now()
-    master = get_master()
 
     if date.month == 2 and 23 <= date.day <= 28:
-        return master["config"]["boost_login_bonus_gem"]
+        return True
     elif date.month == 3 and 23 <= date.day <= 28:
-        return master["config"]["boost_login_bonus_gem"]
+        return True
     elif date.month == 5 and 23 <= date.day <= 28:
-        return master["config"]["boost_login_bonus_gem"]
+        return True
     elif date.month == 6 and 23 <= date.day <= 28:
-        return master["config"]["boost_login_bonus_gem"]
+        return True
     elif date.month == 7 and 23 <= date.day <= 28:
-        return master["config"]["boost_login_bonus_gem"]
+        return True
     elif date.month == 8 and 23 <= date.day <= 28:
-        return master["config"]["boost_login_bonus_gem"]
+        return True
     elif date.month == 9 and 23 <= date.day <= 28:
-        return master["config"]["boost_login_bonus_gem"]
+        return True
     elif date.month == 12 and 9 <= date.day <= 15:
-        return master["config"]["boost_login_bonus_gem"]
-    else:
-        return master["config"]["login_bonus_gem"]
+        return True
+
+    return False
 
 def sortStringify(obj, indent=None):
     return json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=False)

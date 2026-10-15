@@ -62,7 +62,7 @@ def clear():
 
     ranking: Ranking = Ranking.query.filter_by(
         creator=gamer.id, levelId=levelSearch.id, cleared=False
-    ).order_by(Ranking.time.asc(), Ranking.id.asc()).first()
+    ).order_by(Ranking.createdAt.asc(), Ranking.id.asc()).first()
     previousClear = Ranking.query.filter_by(
         creator=gamer.id, levelId=levelSearch.id, cleared=False
     ).first() is not None
@@ -90,7 +90,12 @@ def clear():
             key = str(clearReward["id"])
             blocks[key] = blocks.get(key, 0) + clearReward["quantity"]
         elif clearReward["type"] == "gem":
-            videomodel: Video = Video(gamer.id, clearReward["quantity"])
+            master = extensions.get_master()
+            quantity = clearReward["quantity"] * master['reward_gem_multiplier'] + master['reward_gem_addition']
+            if extensions.isGemBoostWeek():
+                quantity = quantity * 1.5
+
+            videomodel: Video = Video(gamer.id, quantity)
             db.session.add(videomodel)
             db.session.flush()
             videoStr = f"{videomodel.id}:{videomodel.token}"
@@ -118,7 +123,7 @@ def clear():
             "firstClear": firstClear,
             "ownRecord": ownRecord,
             "playerPt": difficulty if firstClear else 0,
-            "rank": rank,
+            "rank": rank if ownRecord or firstClear else 0,
             "time": time,
             "video": videoStr,
             "videoGem": clearReward["quantity"] if videoStr else 0
@@ -749,11 +754,14 @@ def level_list():
 def quickget():
     json = request.json
     id, token = request.headers["authorization"].split(":")
+    gamer: Gamer = Gamer.query.filter_by(id=id).first()
 
     items = []
-    randomlevel: Level = Level.query.order_by(func.random()).first()
+
+    rankings = [ranking.levelId for ranking in Ranking.query.filter_by(creator=gamer.id, cleared=False).all()]
+    randomlevel: Level = Level.query.filter(~Level.id.in_(rankings)).order_by(func.random()).first()
+
     if randomlevel:
-        gamer: Gamer = Gamer.query.filter_by(id=id).first()
         creator: Gamer = Gamer.query.filter_by(id=randomlevel.creator).first()
 
         dayAgo = int(time.time()) - 86400
@@ -812,6 +820,13 @@ def quickget():
             "version": randomlevel.version,
             "yesterdayRating": ratingYesterday
         })
+    else:
+        return jsonify({
+            "success": False,
+            "result": {},
+            "updated": {},
+            "timestamp": round(datetime.timestamp(datetime.now()))
+        })
     
     return jsonify({
         'success': True, 
@@ -837,7 +852,7 @@ def ranklist():
     id, token = request.headers["authorization"].split(":")
 
     gamer: Gamer = Gamer.query.filter_by(id=id).first()
-    query = Ranking.query.filter_by(levelId=levelId, cleared=False).order_by(Ranking.time.asc(), Ranking.id.asc())
+    query = Ranking.query.filter_by(levelId=levelId, cleared=False).order_by(Ranking.createdAt.asc(), Ranking.id.asc())
  
     if cursor:
         try:
@@ -849,10 +864,13 @@ def ranklist():
                 "updated": {},
                 "timestamp": round(datetime.timestamp(datetime.now()))
             })
-        
+
+        cursorRanking = db.session.query(Ranking).filter_by(id=decodedCursor["id"]).first()
         query = query.filter(or_(
-            Ranking.time > decodedCursor["time"],
-            and_(Ranking.time == decodedCursor["time"], Ranking.id > decodedCursor["id"])
+            Ranking.time > cursorRanking.time,
+            and_(
+                Ranking.time == cursorRanking.time, Ranking.id > decodedCursor["id"]
+            )
         ))
 
     if gamer.adminLevel < 1:
@@ -867,7 +885,7 @@ def ranklist():
  
     if hasMore:
         nextCursor = cursor_key.makeCursor({
-            "time": ranks[-1].time,
+            "createdAt": ranks[-1].createdAt,
             "id": ranks[-1].id
         }, config.CURSOR_SECRET)
  

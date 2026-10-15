@@ -34,13 +34,17 @@ def alt_login():
     
     if gamer and gamer.token == token:
         return jsonify({'reason': 'already_loggedin'}), 400
-        
+    
+    master = extensions.get_master()
+
     gamer.token = ''.join(random.choices(string.ascii_lowercase + string.ascii_uppercase + string.digits, k=32))
     gamer.lastLoginAt = round(datetime.timestamp(datetime.now()))
     gamer.country = request.headers.get('X-Vercel-Ip-Country', 'US')
     gamer.followerCount = len(Json.loads(gamer.follows)["followers"])
+
     cts = round(datetime.timestamp(datetime.now()))
     loginBonus = 0
+    loginRewardAmount = master["config"]['boost_login_bonus_gem'] if extensions.isGemBoostWeek() else master["config"]['login_bonus_gem']
 
     if gamer.lastStreaklogin is None or gamer.lastStreaklogin == 0:
         gamer.lastStreaklogin = cts
@@ -48,8 +52,8 @@ def alt_login():
         secondsPassed = cts - gamer.lastStreaklogin
         hoursPassed = secondsPassed / 3600
         if hoursPassed >= 24 and hoursPassed <= 48:
-            loginBonus = extensions.loginRewardAmount()
-            gamer.gem += extensions.loginRewardAmount()
+            loginBonus = loginRewardAmount
+            gamer.gem += loginRewardAmount
             gamer.lastStreaklogin = cts
         elif hoursPassed >= 48:
             gamer.lastStreaklogin = cts
@@ -107,8 +111,6 @@ def alt_login():
             "createdAt": comments[-1].createdAt,
             "id": comments[-1].commentId
         }, config.CURSOR_SECRET)
-
-    master = extensions.get_master()
 
     campaignComments = {}
     campaignids = [f"level_{data['id']}" for campaign in master["campaign"] for data in master["campaignlevel"][campaign]]
@@ -180,24 +182,25 @@ def login():
     search = Gamer.query.filter_by(password=json["password"])
     gamer: Gamer = search.first()
     if not gamer:
-        print('password mismatch')
         return jsonify({'reason': "password_mismatch"}), 400
     
     searchId = Gamer.query.filter_by(id=int(json["id"])).first()
     if not searchId:
-        print("no search id")
         return jsonify({'reason': 'missing_gamer'}), 400
     
     if gamer and gamer.token == token:
-        print("alreayd logged in")
         return jsonify({'reason': 'already_loggedin'}), 400
+    
+    master = extensions.get_master()
 
     gamer.token = ''.join(random.choices(string.ascii_lowercase + string.ascii_uppercase + string.digits, k=32))
     gamer.lastLoginAt = round(datetime.timestamp(datetime.now()))
     gamer.country = request.headers.get('X-Vercel-Ip-Country', 'US')
     gamer.followerCount = len(Json.loads(gamer.follows)["followers"])
+
     cts = round(datetime.timestamp(datetime.now()))
     loginBonus = 0
+    loginRewardAmount = master["config"]['boost_login_bonus_gem'] if extensions.isGemBoostWeek() else master["config"]['login_bonus_gem']
 
     if gamer.lastStreaklogin is None or gamer.lastStreaklogin == 0:
         gamer.lastStreaklogin = cts
@@ -205,7 +208,8 @@ def login():
         secondsPassed = cts - gamer.lastStreaklogin
         hoursPassed = secondsPassed / 3600
         if hoursPassed >= 24 and hoursPassed <= 48:
-            gamer.gem += extensions.loginRewardAmount()
+            loginBonus = loginRewardAmount
+            gamer.gem += loginRewardAmount
             gamer.lastStreaklogin = cts
         elif hoursPassed >= 48:
             gamer.lastStreaklogin = cts
@@ -263,8 +267,6 @@ def login():
             "createdAt": comments[-1].createdAt,
             "id": comments[-1].commentId
         }, config.CURSOR_SECRET)
-
-    master = extensions.get_master()
 
     campaignComments = {}
     campaignids = [f"level_{data['id']}" for campaign in master["campaign"] for data in master["campaignlevel"][campaign]]
@@ -396,8 +398,6 @@ def register():
             "createdAt": comments[-1].createdAt,
             "id": comments[-1].commentId
         }, config.CURSOR_SECRET)
-
-    master = extensions.get_master()
 
     campaignComments = {}
     campaignids = [f"level_{data['id']}" for campaign in master["campaign"] for data in master["campaignlevel"][campaign]]

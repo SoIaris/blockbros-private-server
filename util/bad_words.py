@@ -214,7 +214,6 @@ words = [
   "gaylord",
   "gaysex",
   "goatse",
-  "God",
   "god-dam",
   "god-damned",
   "goddamn",
