@@ -91,7 +91,7 @@ def clear():
             blocks[key] = blocks.get(key, 0) + clearReward["quantity"]
         elif clearReward["type"] == "gem":
             master = extensions.get_master()
-            quantity = clearReward["quantity"] * master['reward_gem_multiplier'] + master['reward_gem_addition']
+            quantity = clearReward["quantity"] * master["config"]['reward_gem_multiplier'] + master["config"]['reward_gem_addition']
             if extensions.isGemBoostWeek():
                 quantity = quantity * 1.5
 
